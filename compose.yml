@@ -92,7 +92,18 @@ services:
   caddy:
     image: caddy:2.10-alpine
     restart: unless-stopped
-    ports: ["80:80", "443:443", "443:443/udp"]
+    ports:
+      - target: 80
+        published: "${PUBLIC_HTTP_PORT:-8080}"
+        protocol: tcp
+      - target: 443
+        published: "${PUBLIC_HTTPS_PORT:-44443}"
+        host_ip: "${PUBLIC_HTTPS_HOST:-127.0.0.1}"
+        protocol: tcp
+      - target: 443
+        published: "${PUBLIC_HTTPS_PORT:-44443}"
+        host_ip: "${PUBLIC_HTTPS_HOST:-127.0.0.1}"
+        protocol: udp
     environment: { PUBLIC_HOST: "${PUBLIC_HOST}" }
     volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", caddy-data:/data, caddy-config:/config]
     depends_on: [web]

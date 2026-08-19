@@ -19,7 +19,6 @@ if [[ -f $INSTALL_DIR/.env && -x $INSTALL_DIR/b2b-platform ]]; then
 fi
 (( $(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo) >= 1900 )) || fail "at least 2 GB RAM is required"
 (( $(df -Pm /opt 2>/dev/null | awk 'NR==2{print $4}' || df -Pm / | awk 'NR==2{print $4}') >= 10240 )) || fail "at least 10 GB free disk is required"
-for port in 80 443; do ss -H -ltn "sport = :$port" | grep -q . && fail "port $port is already in use" || true; done
 
 if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; then
   read -r -p "Install Docker Engine from Docker's official Ubuntu repository? [y/N] " answer
@@ -55,12 +54,16 @@ read -r -p "Deployment mode [domain/ip]: " MODE
 if [[ $MODE == domain ]]; then
   read -r -p "Domain (example: app.example.com): " HOST
   [[ $HOST =~ ^[A-Za-z0-9.-]+$ && $HOST == *.* ]] || fail "invalid domain"
-  ORIGIN="https://$HOST"; COOKIE=true
+  HTTP_PORT=80; HTTPS_HOST=0.0.0.0; HTTPS_PORT=443; ORIGIN="https://$HOST"; COOKIE=true
+  for port in 80 443; do ss -H -ltn "sport = :$port" | grep -q . && fail "port $port is already in use" || true; done
 else
   HOST=$(hostname -I | awk '{print $1}')
   read -r -p "Public server IP [$HOST]: " entered; HOST=${entered:-$HOST}
   [[ $HOST =~ ^[0-9a-fA-F:.]+$ ]] || fail "invalid IP"
-  ORIGIN="http://$HOST"; COOKIE=false
+  read -r -p "Public HTTP port [8080]: " HTTP_PORT; HTTP_PORT=${HTTP_PORT:-8080}
+  [[ $HTTP_PORT =~ ^[0-9]+$ ]] && (( HTTP_PORT >= 1024 && HTTP_PORT <= 65535 )) || fail "IP mode port must be between 1024 and 65535"
+  ss -H -ltn "sport = :$HTTP_PORT" | grep -q . && fail "port $HTTP_PORT is already in use" || true
+  HTTPS_HOST=127.0.0.1; HTTPS_PORT=44443; ORIGIN="http://$HOST:$HTTP_PORT"; COOKIE=false
 fi
 read -r -p "First platform administrator email: " ADMIN_EMAIL
 [[ $ADMIN_EMAIL == *@*.* ]] || fail "invalid email"
@@ -69,6 +72,9 @@ cat > "$INSTALL_DIR/.env" <<EOF
 APP_VERSION=$VERSION
 DEPLOYMENT_MODE=$MODE
 PUBLIC_HOST=$HOST
+PUBLIC_HTTP_PORT=$HTTP_PORT
+PUBLIC_HTTPS_HOST=$HTTPS_HOST
+PUBLIC_HTTPS_PORT=$HTTPS_PORT
 PUBLIC_ORIGIN=$ORIGIN
 SESSION_COOKIE_SECURE=$COOKIE
 POSTGRES_DB=b2b_platform
@@ -101,5 +107,5 @@ curl -fsS "$ORIGIN/health" >/dev/null || fail "health check failed; run b2b-plat
 echo "Installed $VERSION at $ORIGIN"
 echo "One-time administrator credentials (this will not be stored again):"
 echo "$ADMIN_RESULT"
-[[ $MODE == ip ]] && echo "WARNING: HTTP IP mode is for short trials only. Run: b2b-platform configure domain"
+[[ $MODE == ip ]] && echo "WARNING: HTTP IP:$HTTP_PORT mode is unencrypted. Limit access at the router/firewall and run b2b-platform configure domain when available."
 echo "SMTP is not configured. Password reset and email alerts are unavailable until: b2b-platform configure smtp"

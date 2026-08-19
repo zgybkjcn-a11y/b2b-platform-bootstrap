@@ -72,7 +72,8 @@ configure_domain() {
   [[ $host =~ ^[A-Za-z0-9.-]+$ && $host == *.* ]] || fail "invalid domain"
   local server_ip; server_ip=$(hostname -I | awk '{print $1}')
   getent ahostsv4 "$host" | awk '{print $1}' | grep -Fxq "$server_ip" || fail "DNS does not point to $server_ip"
-  env_set DEPLOYMENT_MODE domain; env_set PUBLIC_HOST "$host"; env_set PUBLIC_ORIGIN "https://$host"; env_set SESSION_COOKIE_SECURE true
+  for port in 80 443; do ss -H -ltn "sport = :$port" | grep -q . && fail "port $port is already in use" || true; done
+  env_set DEPLOYMENT_MODE domain; env_set PUBLIC_HOST "$host"; env_set PUBLIC_HTTP_PORT 80; env_set PUBLIC_HTTPS_HOST 0.0.0.0; env_set PUBLIC_HTTPS_PORT 443; env_set PUBLIC_ORIGIN "https://$host"; env_set SESSION_COOKIE_SECURE true
   cp "$INSTALL_DIR/Caddyfile.domain" "$INSTALL_DIR/Caddyfile"
   "${COMPOSE[@]}" up -d --force-recreate api web caddy
   for _ in {1..30}; do health && { echo "Domain enabled: https://$host (existing sessions must sign in again)"; return; }; sleep 2; done

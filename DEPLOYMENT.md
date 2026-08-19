@@ -4,7 +4,7 @@
 
 ## 10 分钟安装
 
-准备至少 2 GB 内存、10 GB 可用磁盘，并在云厂商安全组开放 TCP 80/443。安装器不会修改 SSH 或 UFW。
+准备至少 2 GB 内存、10 GB 可用磁盘。域名模式需开放 TCP 80/443；临时 IP 模式只需开放安装时选择的高位 TCP 端口（默认 8080）。安装器不会修改路由器、SSH 或 UFW。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main/install.sh | sudo bash
@@ -20,7 +20,15 @@ curl -fsSL https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstra
 
 ## 域名与 IP 试用
 
-正式模式先把域名 A 记录指向服务器公网 IP，选择 `domain` 后 Caddy 自动申请证书、跳转 HTTPS 并发送 HSTS。IP 模式仅提供 HTTP，用于短期验收，页面会持续警告，禁止录入敏感业务数据。
+正式模式先把域名 A 记录指向服务器公网 IP，选择 `domain` 后 Caddy 自动申请证书、跳转 HTTPS 并发送 HSTS。IP 模式使用 `http://公网IP:端口`，默认端口为 8080，不占用 80/443；页面会持续显示未加密警告。该模式仅适合临时、小范围使用，不应传输敏感业务数据，建议在路由器或防火墙限制允许访问的来源 IP。
+
+例如：
+
+```text
+http://203.0.113.10:8080
+```
+
+家庭电脑还需要真正的公网 IPv4 或可入站 IPv6、路由器端口映射，以及运营商允许对应端口入站。处于 CGNAT 后时，单独修改本项目端口无法从公网访问。
 
 从 IP 切到域名不会修改账号或数据：
 
@@ -78,4 +86,4 @@ sudo b2b-platform uninstall
 - 页面 502：运行 `b2b-platform doctor`，再查看 `api`、`web`、`postgres` 日志。
 - 升级停止：备份创建或验证失败会阻止升级，先修复备份服务，不要绕过。
 
-本 SaaS Docker 部署使用 80/443，与本机开发版 `31002/31003` 以及稳定单机版 `31000/31001` 完全独立，不迁移后两者的数据。
+本 SaaS Docker 域名模式使用 80/443；IP 模式默认使用 8080。两者均与本机开发版 `31002/31003` 以及稳定单机版 `31000/31001` 完全独立，不迁移后两者的数据。
