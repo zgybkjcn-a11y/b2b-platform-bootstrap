@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+INSTALL_DIR=/opt/b2b-platform
+BOOTSTRAP_BASE=${BOOTSTRAP_BASE:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main}
+ENV_FILE=$INSTALL_DIR/.env
+COMPOSE=(docker compose --project-directory "$INSTALL_DIR" --env-file "$ENV_FILE" -f "$INSTALL_DIR/compose.yml")
+fail() { echo "ERROR: $*" >&2; exit 1; }
+[[ $(id -u) -eq 0 ]] || fail "run with sudo"
+
+env_get() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
+env_set() {
+  local key=$1 value=$2 escaped
+  escaped=$(printf '%s' "$value" | sed 's/[&|]/\\&/g')
+  if grep -q "^$key=" "$ENV_FILE"; then sed -i "s|^$key=.*|$key=$escaped|" "$ENV_FILE"; else printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"; fi
+  chmod 0600 "$ENV_FILE"
+}
+health() { curl -fsS --max-time 15 "$(env_get PUBLIC_ORIGIN)/health" >/dev/null; }
+backup() {
+  local token result id
+  token=$(env_get BACKUP_SERVICE_TOKEN)
+  result=$("${COMPOSE[@]}" exec -T backup wget -qO- --header="Authorization: Bearer $token" --post-data='' http://127.0.0.1:31004/backups)
+  id=$(printf '%s' "$result" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p' | head -1)
+  [[ -n $id ]] || fail "backup creation failed"
+  result=$("${COMPOSE[@]}" exec -T backup wget -qO- --header="Authorization: Bearer $token" --post-data='' "http://127.0.0.1:31004/backups/$id/verify")
+  printf '%s' "$result" | grep -q '"verification":"valid"' || fail "backup verification failed"
+  echo "Backup $id created and verified"
+}
+upgrade() {
+  local next=${1:-} previous
+  [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
+  previous=$(env_get APP_VERSION)
+  [[ $next != "$previous" ]] || { echo "Already on $next"; return; }
+  doctor
+  backup
+  if curl -fsSL "$BOOTSTRAP_BASE/versions/$next.json" | grep -Fq "\"$previous\""; then
+    printf '%s\n' "$previous" > "$INSTALL_DIR/rollback-version"
+  else
+    rm -f "$INSTALL_DIR/rollback-version"
+    echo "WARN release does not declare $previous schema-compatible; rollback will be disabled"
+  fi
+  env_set APP_VERSION "$next"
+  if ! "${COMPOSE[@]}" pull api worker dispatcher backup web migrate || ! "${COMPOSE[@]}" run --rm migrate || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web; then
+    env_set APP_VERSION "$previous"; "${COMPOSE[@]}" up -d api worker dispatcher backup web; fail "upgrade failed; application images restored to $previous"
+  fi
+  if ! health; then env_set APP_VERSION "$previous"; "${COMPOSE[@]}" up -d api worker dispatcher backup web; fail "health check failed; application images restored to $previous (database was not downgraded)"; fi
+  echo "Upgraded to $next"
+}
+rollback() {
+  [[ -f $INSTALL_DIR/rollback-version ]] || fail "no recorded rollback version"
+  local target; target=$(<"$INSTALL_DIR/rollback-version")
+  echo "Rollback never downgrades the database. Continue only when release notes declare schema compatibility."
+  read -r -p "Type $target to continue: " confirmation
+  [[ $confirmation == "$target" ]] || fail "cancelled"
+  local current; current=$(env_get APP_VERSION); env_set APP_VERSION "$target"
+  if ! "${COMPOSE[@]}" up -d api worker dispatcher backup web || ! health; then env_set APP_VERSION "$current"; "${COMPOSE[@]}" up -d api worker dispatcher backup web; fail "rollback health check failed"; fi
+  printf '%s\n' "$current" > "$INSTALL_DIR/rollback-version"
+  echo "Rolled back application images to $target"
+}
+doctor() {
+  local failed=0 mode origin
+  mode=$(env_get DEPLOYMENT_MODE); origin=$(env_get PUBLIC_ORIGIN)
+  [[ $(stat -c %a "$ENV_FILE") == 600 ]] || { echo "FAIL .env permissions must be 600"; failed=1; }
+  [[ $mode == domain && $origin == https://* ]] || [[ $mode == ip && $origin == http://* ]] || { echo "FAIL deployment mode/origin mismatch"; failed=1; }
+  "${COMPOSE[@]}" config -q || failed=1
+  "${COMPOSE[@]}" ps
+  health && echo "OK public health" || { echo "FAIL public health"; failed=1; }
+  [[ -n $(env_get SMTP_HOST) ]] || echo "WARN SMTP is not configured; password reset and email alerts are unavailable"
+  return "$failed"
+}
+configure_domain() {
+  read -r -p "Domain: " host
+  [[ $host =~ ^[A-Za-z0-9.-]+$ && $host == *.* ]] || fail "invalid domain"
+  local server_ip; server_ip=$(hostname -I | awk '{print $1}')
+  getent ahostsv4 "$host" | awk '{print $1}' | grep -Fxq "$server_ip" || fail "DNS does not point to $server_ip"
+  env_set DEPLOYMENT_MODE domain; env_set PUBLIC_HOST "$host"; env_set PUBLIC_ORIGIN "https://$host"; env_set SESSION_COOKIE_SECURE true
+  cp "$INSTALL_DIR/Caddyfile.domain" "$INSTALL_DIR/Caddyfile"
+  "${COMPOSE[@]}" up -d --force-recreate api web caddy
+  for _ in {1..30}; do health && { echo "Domain enabled: https://$host (existing sessions must sign in again)"; return; }; sleep 2; done
+  fail "domain health check failed; inspect b2b-platform logs caddy"
+}
+configure_smtp() {
+  local host port secure user password from
+  read -r -p "SMTP host: " host; read -r -p "SMTP port [587]: " port; port=${port:-587}
+  read -r -p "Use TLS immediately (true for port 465, otherwise false) [false]: " secure; secure=${secure:-false}
+  read -r -p "SMTP username: " user; read -r -s -p "SMTP password: " password; echo
+  read -r -p "From address: " from
+  [[ $from == *@*.* ]] || fail "invalid from address"
+  env_set SMTP_HOST "$host"; env_set SMTP_PORT "$port"; env_set SMTP_SECURE "$secure"; env_set SMTP_USER "$user"; env_set SMTP_PASSWORD "$password"; env_set AUTH_EMAIL_FROM "$from"
+  "${COMPOSE[@]}" up -d --force-recreate api worker
+  echo "SMTP saved. Send a test from System Settings > Deployment check."
+}
+
+command=${1:-help}; shift || true
+case "$command" in
+  install) curl -fsSL https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main/install.sh | bash -s -- "$@" ;;
+  status) "${COMPOSE[@]}" ps ;;
+  doctor) doctor ;;
+  logs) if [[ -n ${1:-} ]]; then "${COMPOSE[@]}" logs --tail=200 -f "$1"; else "${COMPOSE[@]}" logs --tail=200 -f; fi ;;
+  configure) case ${1:-} in domain) configure_domain;; smtp) configure_smtp;; *) fail "configure requires domain or smtp";; esac ;;
+  backup) backup ;;
+  upgrade) upgrade "${1:-}" ;;
+  rollback) rollback ;;
+  uninstall)
+    if [[ ${1:-} == --purge-data ]]; then read -r -p "Type b2b-platform to permanently delete all data: " confirm; [[ $confirm == b2b-platform ]] || fail "cancelled"; "${COMPOSE[@]}" down -v; else "${COMPOSE[@]}" down; echo "Services stopped; volumes and configuration retained."; fi ;;
+  *) echo "Usage: b2b-platform install|status|doctor|logs [service]|configure domain|configure smtp|backup|upgrade [version]|rollback|uninstall [--purge-data]" ;;
+esac
