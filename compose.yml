@@ -87,7 +87,7 @@ services:
   web:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-web:${APP_VERSION}
     restart: unless-stopped
-    environment: { API_URL: http://api:31001, AUTH_REQUIRED: "true", DEPLOYMENT_MODE: "${DEPLOYMENT_MODE}" }
+    environment: { API_URL: http://api:31001, WEB_AUTH_REQUIRED: "true", DEPLOYMENT_MODE: "${DEPLOYMENT_MODE}" }
     depends_on: { api: { condition: service_healthy } }
   caddy:
     image: caddy:2.10-alpine

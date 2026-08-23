@@ -4,8 +4,8 @@ umask 077
 
 INSTALL_DIR=/opt/b2b-platform
 BOOTSTRAP_BASE=${BOOTSTRAP_BASE:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main}
-VERSION=""
-while (($#)); do case "$1" in --version) VERSION=${2:?missing version}; shift 2;; *) echo "Unknown option: $1" >&2; exit 2;; esac; done
+RELEASE_VERSION=""
+while (($#)); do case "$1" in --version) RELEASE_VERSION=${2:?missing version}; shift 2;; *) echo "Unknown option: $1" >&2; exit 2;; esac; done
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 [[ $(id -u) -eq 0 ]] || fail "run with sudo"
@@ -13,7 +13,7 @@ fail() { echo "ERROR: $*" >&2; exit 1; }
 source /etc/os-release
 [[ ${ID:-} == ubuntu && ( ${VERSION_ID:-} == 22.04 || ${VERSION_ID:-} == 24.04 ) ]] || fail "Ubuntu 22.04/24.04 is required"
 if [[ -f $INSTALL_DIR/.env && -x $INSTALL_DIR/b2b-platform ]]; then
-  if [[ -n $VERSION ]]; then exec "$INSTALL_DIR/b2b-platform" upgrade "$VERSION"; fi
+  if [[ -n $RELEASE_VERSION ]]; then exec "$INSTALL_DIR/b2b-platform" upgrade "$RELEASE_VERSION"; fi
   echo "Existing installation found; running diagnostics instead of overwriting configuration."
   exec "$INSTALL_DIR/b2b-platform" doctor
 fi
@@ -43,8 +43,8 @@ curl -fsSL "$BOOTSTRAP_BASE/SHA256SUMS" -o "$INSTALL_DIR/SHA256SUMS"
 chmod 0755 "$INSTALL_DIR/b2b-platform"
 ln -sf "$INSTALL_DIR/b2b-platform" /usr/local/bin/b2b-platform
 
-if [[ -z $VERSION ]]; then VERSION=$(curl -fsSL "$BOOTSTRAP_BASE/stable.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'); fi
-[[ $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid release version"
+if [[ -z $RELEASE_VERSION ]]; then RELEASE_VERSION=$(curl -fsSL "$BOOTSTRAP_BASE/stable.json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'); fi
+[[ $RELEASE_VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid release version"
 read -r -p "GitHub username: " GH_USER
 read -r -s -p "GHCR token (read:packages only): " GH_TOKEN; echo
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
@@ -69,7 +69,7 @@ read -r -p "First platform administrator email: " ADMIN_EMAIL
 [[ $ADMIN_EMAIL == *@*.* ]] || fail "invalid email"
 secret() { openssl rand -base64 32 | tr -d '\n'; }
 cat > "$INSTALL_DIR/.env" <<EOF
-APP_VERSION=$VERSION
+APP_VERSION=$RELEASE_VERSION
 DEPLOYMENT_MODE=$MODE
 PUBLIC_HOST=$HOST
 PUBLIC_HTTP_PORT=$HTTP_PORT
@@ -102,10 +102,16 @@ docker compose --env-file .env up -d postgres redis minio
 docker compose --env-file .env run --rm migrate
 docker compose --env-file .env up -d api worker dispatcher backup web caddy
 ADMIN_RESULT=$(docker compose --env-file .env exec -T api node apps/api/dist/bootstrapPlatformAdmin.js "$ADMIN_EMAIL")
+ADMIN_RESULT_FILE="$INSTALL_DIR/bootstrap-admin-result.json"
+printf '%s\n' "$ADMIN_RESULT" > "$ADMIN_RESULT_FILE"
+chmod 0600 "$ADMIN_RESULT_FILE"
 for _ in {1..30}; do curl -fsS "$ORIGIN/health" >/dev/null && break; sleep 2; done
-curl -fsS "$ORIGIN/health" >/dev/null || fail "health check failed; run b2b-platform logs"
-echo "Installed $VERSION at $ORIGIN"
+if ! curl -fsS "$ORIGIN/health" >/dev/null; then
+  fail "health check failed; run b2b-platform logs; administrator credentials are in $ADMIN_RESULT_FILE (mode 600)"
+fi
+echo "Installed $RELEASE_VERSION at $ORIGIN"
 echo "One-time administrator credentials (this will not be stored again):"
-echo "$ADMIN_RESULT"
+cat "$ADMIN_RESULT_FILE"
+rm -f "$ADMIN_RESULT_FILE"
 [[ $MODE == ip ]] && echo "WARNING: HTTP IP:$HTTP_PORT mode is unencrypted. Limit access at the router/firewall and run b2b-platform configure domain when available."
 echo "SMTP is not configured. Password reset and email alerts are unavailable until: b2b-platform configure smtp"
