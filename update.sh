@@ -97,7 +97,11 @@ if ! run_upgrade; then
     read -r -p "GHCR username [zgybkjcn-a11y]: " gh_user
     gh_user=${gh_user:-zgybkjcn-a11y}
     read -r -s -p "GHCR token (read:packages): " gh_token; echo
-    printf '%s' "$gh_token" | docker login ghcr.io -u "$gh_user" --password-stdin
+    if ! printf '%s' "$gh_token" | docker login ghcr.io -u "$gh_user" --password-stdin; then
+      unset gh_token
+      restore_control_files
+      fail "GHCR login failed; restored control files"
+    fi
     unset gh_token
     run_upgrade || true
   fi
