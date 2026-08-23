@@ -53,8 +53,6 @@ done
   sha256sum -c SHA256SUMS
 ) || fail "bootstrap file integrity check failed"
 
-"$INSTALL_DIR/b2b-platform" doctor || fail "pre-update health check failed"
-
 for file in b2b-platform update.sh install.sh compose.yml Caddyfile.ip Caddyfile.domain SHA256SUMS; do
   [[ -e "$INSTALL_DIR/$file" ]] && cp -p "$INSTALL_DIR/$file" "$control_backup/$file"
 done
@@ -84,6 +82,16 @@ restore_control_files() {
 
 install_control_files
 
+new_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
+if ! "${new_compose[@]}" config -q || ! "${new_compose[@]}" up -d caddy; then
+  restore_control_files
+  fail "new control files could not start Caddy; restored control files"
+fi
+"$INSTALL_DIR/b2b-platform" doctor || {
+  restore_control_files
+  fail "post-control-file health check failed; restored control files"
+}
+
 if $same_version; then
   echo "Control files updated; application already on $RELEASE_VERSION"
   exit 0
@@ -109,8 +117,7 @@ fi
 
 if ! grep -q "Upgraded to $RELEASE_VERSION" "$upgrade_log"; then
   restore_control_files
-  old_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
-  "${old_compose[@]}" up -d api worker dispatcher backup web caddy || true
+  "${new_compose[@]}" up -d api worker dispatcher backup web caddy || true
   fail "update failed; restored control files and attempted to restore the previous application version $previous"
 fi
 
