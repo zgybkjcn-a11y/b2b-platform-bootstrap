@@ -63,7 +63,7 @@ sudo b2b-platform doctor
 sudo b2b-platform logs api
 sudo b2b-platform backup
 sudo b2b-platform update
-sudo b2b-platform update v0.1.1
+sudo b2b-platform update v0.1.3
 sudo b2b-platform rollback
 ```
 

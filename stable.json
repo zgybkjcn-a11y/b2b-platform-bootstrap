@@ -1,5 +1,5 @@
 {
-  "version": "v0.1.1",
-  "apiImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-api:v0.1.1",
-  "webImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-web:v0.1.1"
+  "version": "v0.1.3",
+  "apiImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-api:v0.1.3",
+  "webImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-web:v0.1.3"
 }
