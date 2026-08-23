@@ -39,6 +39,9 @@ curl -fsSL "$BOOTSTRAP_BASE/Caddyfile.domain" -o "$INSTALL_DIR/Caddyfile.domain"
 curl -fsSL "$BOOTSTRAP_BASE/Caddyfile.ip" -o "$INSTALL_DIR/Caddyfile.ip"
 curl -fsSL "$BOOTSTRAP_BASE/b2b-platform" -o "$INSTALL_DIR/b2b-platform"
 curl -fsSL "$BOOTSTRAP_BASE/SHA256SUMS" -o "$INSTALL_DIR/SHA256SUMS"
+curl -fsSL "$BOOTSTRAP_BASE/update.sh" -o "$INSTALL_DIR/update.sh"
+curl -fsSL "$BOOTSTRAP_BASE/install.sh" -o "$INSTALL_DIR/install.sh"
+chmod 0755 "$INSTALL_DIR/install.sh" "$INSTALL_DIR/update.sh"
 (cd "$INSTALL_DIR" && sha256sum -c SHA256SUMS)
 chmod 0755 "$INSTALL_DIR/b2b-platform"
 ln -sf "$INSTALL_DIR/b2b-platform" /usr/local/bin/b2b-platform

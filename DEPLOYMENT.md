@@ -62,11 +62,12 @@ sudo b2b-platform status
 sudo b2b-platform doctor
 sudo b2b-platform logs api
 sudo b2b-platform backup
-sudo b2b-platform upgrade v1.2.4
+sudo b2b-platform update
+sudo b2b-platform update v0.1.1
 sudo b2b-platform rollback
 ```
 
-升级顺序固定为配置检查、创建并验证加密备份、拉取固定镜像、幂等 migration、切换服务、健康检查。失败自动恢复上一应用镜像，数据库不会自动降级。migration 必须 expand-first；只有发行说明明确 schema 兼容时才可 rollback。
+`update` 会先从公开 bootstrap 下载并校验控制文件，保留 `.env` 和当前 IP/domain 模式，再按 `stable.json` 或指定版本执行升级。升级顺序固定为配置检查、创建并验证加密备份、拉取固定镜像、幂等 migration、切换服务、健康检查。失败自动恢复上一应用镜像和控制文件，数据库不会自动降级。旧服务器也可执行 `curl -fsSL https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main/update.sh | sudo bash`。migration 必须 expand-first；只有发行说明明确 schema 兼容时才可 rollback。
 
 备份存放在 Docker `backup-data` volume。定期从“系统设置 > 数据管理”下载加密归档到异地存储，并单独保管 `BACKUP_ENCRYPTION_KEY` 与 `TENANT_SETTINGS_ENCRYPTION_KEYS`。每季度在隔离环境做恢复演练。
 
