@@ -80,15 +80,21 @@ restore_control_files() {
   done
 }
 
+restore_and_restart_caddy() {
+  restore_control_files
+  local restored_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
+  "${restored_compose[@]}" up -d caddy || true
+}
+
 install_control_files
 
 new_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
 if ! "${new_compose[@]}" config -q || ! "${new_compose[@]}" up -d caddy; then
-  restore_control_files
+  restore_and_restart_caddy
   fail "new control files could not start Caddy; restored control files"
 fi
 "$INSTALL_DIR/b2b-platform" doctor || {
-  restore_control_files
+  restore_and_restart_caddy
   fail "post-control-file health check failed; restored control files"
 }
 
@@ -107,7 +113,7 @@ if ! run_upgrade; then
     read -r -s -p "GHCR token (read:packages): " gh_token; echo
     if ! printf '%s' "$gh_token" | docker login ghcr.io -u "$gh_user" --password-stdin; then
       unset gh_token
-      restore_control_files
+      restore_and_restart_caddy
       fail "GHCR login failed; restored control files"
     fi
     unset gh_token
@@ -116,7 +122,7 @@ if ! run_upgrade; then
 fi
 
 if ! grep -q "Upgraded to $RELEASE_VERSION" "$upgrade_log"; then
-  restore_control_files
+  restore_and_restart_caddy
   "${new_compose[@]}" up -d api worker dispatcher backup web caddy || true
   fail "update failed; restored control files and attempted to restore the previous application version $previous"
 fi
