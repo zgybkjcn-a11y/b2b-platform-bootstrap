@@ -89,9 +89,9 @@ restore_and_restart_caddy() {
 install_control_files
 
 new_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
-if ! "${new_compose[@]}" config -q || ! "${new_compose[@]}" up -d caddy; then
+if ! "${new_compose[@]}" config -q; then
   restore_and_restart_caddy
-  fail "new control files could not start Caddy; restored control files"
+  fail "new control files failed Compose validation; restored control files"
 fi
 "$INSTALL_DIR/b2b-platform" doctor || {
   restore_and_restart_caddy
@@ -125,6 +125,14 @@ if ! grep -q "Upgraded to $RELEASE_VERSION" "$upgrade_log"; then
   restore_and_restart_caddy
   "${new_compose[@]}" up -d api worker dispatcher backup web caddy || true
   fail "update failed; restored control files and attempted to restore the previous application version $previous"
+fi
+
+# Start the proxy only after the application image upgrade has completed.
+# Starting Caddy before `b2b-platform upgrade` would evaluate the new Web
+# healthcheck against the previous Web image and can reject every update.
+if ! "${new_compose[@]}" up -d caddy; then
+  restore_and_restart_caddy
+  fail "new control files could not start Caddy after application upgrade; restored control files"
 fi
 
 echo "Updated from $previous to $RELEASE_VERSION"
