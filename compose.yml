@@ -90,7 +90,7 @@ services:
     environment: { API_URL: http://api:31001, WEB_AUTH_REQUIRED: "true", DEPLOYMENT_MODE: "${DEPLOYMENT_MODE}" }
     depends_on: { api: { condition: service_healthy } }
     healthcheck:
-      test: [CMD, wget, -qO-, http://localhost:31000/login]
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:31000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 12
