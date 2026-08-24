@@ -25,6 +25,29 @@ backup() {
   printf '%s' "$result" | grep -q '"verification":"valid"' || fail "backup verification failed"
   echo "Backup $id created and verified"
 }
+tenant_encryption_check() {
+  local keyring active entry key_id encoded bytes active_found=false
+  keyring=$(env_get TENANT_SETTINGS_ENCRYPTION_KEYS)
+  active=$(env_get TENANT_SETTINGS_ACTIVE_KEY_ID); active=${active:-v1}
+  if [[ -z $keyring ]]; then
+    local legacy_key; legacy_key=$(env_get TENANT_SETTINGS_ENCRYPTION_KEY)
+    [[ -n $legacy_key ]] && keyring="$active:$legacy_key"
+  fi
+  [[ $active =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "FAIL tenant settings active key id is invalid"; return 1; }
+  [[ -n $keyring ]] || { echo "FAIL tenant settings encryption keyring is not configured"; return 1; }
+  IFS=',' read -ra entries <<< "$keyring"
+  for entry in "${entries[@]}"; do
+    key_id=${entry%%:*}; encoded=${entry#*:}
+    [[ $key_id =~ ^[A-Za-z0-9._-]{1,64}$ && $encoded != "$entry" && -n $encoded ]] || { echo "FAIL tenant settings encryption keyring format is invalid"; return 1; }
+    if ! bytes=$(printf '%s' "$encoded" | base64 -d 2>/dev/null | wc -c); then
+      echo "FAIL tenant settings encryption key $key_id is not valid Base64"; return 1
+    fi
+    [[ $bytes -eq 32 ]] || { echo "FAIL tenant settings encryption key $key_id must decode to 32 bytes"; return 1; }
+    [[ $key_id == "$active" ]] && active_found=true
+  done
+  [[ $active_found == true ]] || { echo "FAIL active tenant settings key $active is missing from keyring"; return 1; }
+  echo "OK tenant settings encryption keyring ($active)"
+}
 upgrade() {
   local next=${1:-} previous
   [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
@@ -64,6 +87,7 @@ doctor() {
   "${COMPOSE[@]}" config -q || failed=1
   "${COMPOSE[@]}" ps
   health && echo "OK public health" || { echo "FAIL public health"; failed=1; }
+  tenant_encryption_check || failed=1
   [[ -n $(env_get SMTP_HOST) ]] || echo "WARN SMTP is not configured; password reset and email alerts are unavailable"
   return "$failed"
 }
