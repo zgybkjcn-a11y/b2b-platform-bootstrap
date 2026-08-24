@@ -9,6 +9,22 @@ while (($#)); do case "$1" in --version) RELEASE_VERSION=${2:?missing version}; 
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 [[ $(id -u) -eq 0 ]] || fail "run with sudo"
+compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
+wait_for_healthy() {
+  local service=$1 timeout=${2:-240} elapsed=0 container status
+  while (( elapsed < timeout )); do
+    container=$("${compose[@]}" ps -q "$service" 2>/dev/null | head -1)
+    if [[ -n $container ]]; then
+      status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || true)
+      [[ $status == healthy ]] && return 0
+      case $status in unhealthy|exited|dead) break;; esac
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  "${compose[@]}" logs --tail=100 "$service" >&2 || true
+  fail "$service did not become healthy within ${timeout}s"
+}
 [[ $(uname -m) == x86_64 ]] || fail "only amd64 is supported"
 source /etc/os-release
 [[ ${ID:-} == ubuntu && ( ${VERSION_ID:-} == 22.04 || ${VERSION_ID:-} == 24.04 ) ]] || fail "Ubuntu 22.04/24.04 is required"
@@ -101,11 +117,12 @@ EOF
 chmod 0600 "$INSTALL_DIR/.env"
 cp "$INSTALL_DIR/Caddyfile.$MODE" "$INSTALL_DIR/Caddyfile"
 cd "$INSTALL_DIR"
-docker compose --env-file .env pull
-docker compose --env-file .env up -d postgres redis minio
-docker compose --env-file .env run --rm migrate
-docker compose --env-file .env up -d api worker dispatcher backup web caddy
-ADMIN_RESULT=$(docker compose --env-file .env exec -T api node apps/api/dist/bootstrapPlatformAdmin.js "$ADMIN_EMAIL")
+"${compose[@]}" pull
+"${compose[@]}" up -d postgres redis minio
+"${compose[@]}" run --rm migrate
+"${compose[@]}" up -d api worker dispatcher backup web caddy
+wait_for_healthy web
+ADMIN_RESULT=$("${compose[@]}" exec -T api node apps/api/dist/bootstrapPlatformAdmin.js "$ADMIN_EMAIL")
 ADMIN_RESULT_FILE="$INSTALL_DIR/bootstrap-admin-result.json"
 printf '%s\n' "$ADMIN_RESULT" > "$ADMIN_RESULT_FILE"
 chmod 0600 "$ADMIN_RESULT_FILE"

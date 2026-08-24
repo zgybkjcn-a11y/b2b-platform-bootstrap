@@ -57,6 +57,7 @@ for file in b2b-platform update.sh install.sh compose.yml Caddyfile.ip Caddyfile
   [[ -e "$INSTALL_DIR/$file" ]] && cp -p "$INSTALL_DIR/$file" "$control_backup/$file"
 done
 [[ -e "$INSTALL_DIR/Caddyfile" ]] && cp -p "$INSTALL_DIR/Caddyfile" "$control_backup/Caddyfile"
+[[ -e "$INSTALL_DIR/.env" ]] && cp -p "$INSTALL_DIR/.env" "$control_backup/.env"
 
 install_control_files() {
   local file mode_bits
@@ -72,10 +73,11 @@ install_control_files() {
 
 restore_control_files() {
   local file mode_bits
-  for file in b2b-platform update.sh install.sh compose.yml Caddyfile.ip Caddyfile.domain SHA256SUMS Caddyfile; do
+  for file in b2b-platform update.sh install.sh compose.yml Caddyfile.ip Caddyfile.domain SHA256SUMS Caddyfile .env; do
     [[ -e "$control_backup/$file" ]] || continue
     mode_bits=0644
     [[ $file == b2b-platform || $file == update.sh || $file == install.sh ]] && mode_bits=0755
+    [[ $file == .env ]] && mode_bits=0600
     install -m "$mode_bits" "$control_backup/$file" "$INSTALL_DIR/$file"
   done
 }
@@ -83,7 +85,7 @@ restore_control_files() {
 restore_and_restart_caddy() {
   restore_control_files
   local restored_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
-  "${restored_compose[@]}" up -d caddy || true
+  "${restored_compose[@]}" up -d api worker dispatcher backup web caddy || true
 }
 
 install_control_files

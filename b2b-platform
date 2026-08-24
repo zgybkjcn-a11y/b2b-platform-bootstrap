@@ -15,6 +15,33 @@ env_set() {
   chmod 0600 "$ENV_FILE"
 }
 health() { curl -fsS --max-time 15 "$(env_get PUBLIC_ORIGIN)/health" >/dev/null; }
+service_health_status() {
+  local service=$1 container status
+  container=$("${COMPOSE[@]}" ps -q "$service" 2>/dev/null | head -1)
+  [[ -n $container ]] || return 1
+  status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null) || return 1
+  printf '%s\n' "$status"
+}
+service_is_healthy() {
+  [[ $(service_health_status "$1") == healthy ]]
+}
+wait_for_healthy() {
+  local service=$1 timeout=${2:-240} elapsed=0 status
+  while (( elapsed < timeout )); do
+    service_is_healthy "$service" && return 0
+    status=$(service_health_status "$service" 2>/dev/null || true)
+    case $status in
+      unhealthy|exited|dead)
+        echo "FAIL $service became $status" >&2
+        return 1
+        ;;
+    esac
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  echo "FAIL $service did not become healthy within ${timeout}s" >&2
+  return 1
+}
 backup() {
   local token result id
   token=$(env_get BACKUP_SERVICE_TOKEN)
@@ -53,6 +80,11 @@ upgrade() {
   [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
   previous=$(env_get APP_VERSION)
   [[ $next != "$previous" ]] || { echo "Already on $next"; return; }
+  restore_previous_application() {
+    env_set APP_VERSION "$previous"
+    "${COMPOSE[@]}" up -d api worker dispatcher backup web || return 1
+    wait_for_healthy web
+  }
   doctor
   backup
   if curl -fsSL "$BOOTSTRAP_BASE/versions/$next.json" | grep -Fq "\"$previous\""; then
@@ -63,9 +95,13 @@ upgrade() {
   fi
   env_set APP_VERSION "$next"
   if ! "${COMPOSE[@]}" pull api worker dispatcher backup web migrate || ! "${COMPOSE[@]}" run --rm migrate || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web; then
-    env_set APP_VERSION "$previous"; "${COMPOSE[@]}" up -d api worker dispatcher backup web; fail "upgrade failed; application images restored to $previous"
+    restore_previous_application || true
+    fail "upgrade failed; application images restored to $previous"
   fi
-  if ! health; then env_set APP_VERSION "$previous"; "${COMPOSE[@]}" up -d api worker dispatcher backup web; fail "health check failed; application images restored to $previous (database was not downgraded)"; fi
+  if ! wait_for_healthy web || ! health; then
+    restore_previous_application || true
+    fail "health check failed; application images restored to $previous (database was not downgraded)"
+  fi
   echo "Upgraded to $next"
 }
 rollback() {

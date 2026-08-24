@@ -86,5 +86,6 @@ sudo b2b-platform uninstall
 - 邮件失败：确认服务商允许 SMTP、端口未被云厂商封禁，并从部署检查页重试。
 - 页面 502：运行 `b2b-platform doctor`，再查看 `api`、`web`、`postgres` 日志。
 - 升级停止：备份创建或验证失败会阻止升级，先修复备份服务，不要绕过。
+- 若升级出现 `web is unhealthy` 或 Caddy 依赖 Web 启动失败，先检查 `docker compose logs --tail=200 web` 以及 `docker inspect <web-container> --format '{{json .State.Health.Log}}'`。公开 `/health` 只代表 API，不代表 Web 页面可用；更新器会等待 Web healthcheck 通过后才报告升级成功，并在失败时恢复应用版本、控制文件和 `.env`。
 
 本 SaaS Docker 域名模式使用 80/443；IP 模式默认使用 8080。两者均与本机开发版 `31002/31003` 以及稳定单机版 `31000/31001` 完全独立，不迁移后两者的数据。
