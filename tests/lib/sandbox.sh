@@ -79,12 +79,17 @@ sandbox_destroy() {
 
 # Convenience wrapper: run a control script against the sandbox with the
 # stubs in front of PATH.
+#
+# BOOTSTRAP_BASE defaults to the repository working tree, so the scripts
+# under test "download" the artefacts of the current commit. Set
+# SANDBOX_BOOTSTRAP_BASE to point at a fixture directory instead, for tests
+# that need release metadata the repository does not carry.
 sandbox_run() {
   local script=$1; shift
   (
     cd "$SANDBOX" || exit 1
     INSTALL_DIR=$SANDBOX \
-    BOOTSTRAP_BASE=$REPO_ROOT \
+    BOOTSTRAP_BASE=${SANDBOX_BOOTSTRAP_BASE:-$REPO_ROOT} \
     STUB_OLD_VERSION=$STUB_OLD_VERSION \
     STUB_DOCKER_LOG=$SANDBOX/docker.log \
     PATH=$STUB_BIN:$PATH \
