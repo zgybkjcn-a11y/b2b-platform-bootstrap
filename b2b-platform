@@ -76,8 +76,15 @@ tenant_encryption_check() {
   echo "OK tenant settings encryption keyring ($active)"
 }
 upgrade() {
-  local next=${1:-} previous
-  [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
+  local next="" previous allow_unknown=false metadata
+  while (($#)); do
+    case $1 in
+      --allow-unknown-rollback) allow_unknown=true; shift ;;
+      -*) fail "unknown option for upgrade: $1" ;;
+      *) next=$1; shift ;;
+    esac
+  done
+  [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z [--allow-unknown-rollback]"
   previous=$(env_get APP_VERSION)
   [[ $next != "$previous" ]] || { echo "Already on $next"; return; }
   restore_previous_application() {
@@ -87,7 +94,15 @@ upgrade() {
   }
   doctor
   backup
-  if curl -fsSL "$BOOTSTRAP_BASE/versions/$next.json" | grep -Fq "\"$previous\""; then
+  # "The release declares no compatible predecessor" and "we could not find
+  # out" are different facts. Only the first is a release decision; the
+  # second means the next step runs an irreversible migration without
+  # knowing whether rollback would be safe, so it stops the upgrade.
+  if ! metadata=$(curl -fsSL "$BOOTSTRAP_BASE/versions/$next.json"); then
+    [[ $allow_unknown == true ]] || fail "cannot read release metadata for $next (unreachable, or not published); rollback compatibility is UNKNOWN and the database is never downgraded. Re-run once $BOOTSTRAP_BASE is reachable, or pass --allow-unknown-rollback to upgrade without a rollback path"
+    rm -f "$INSTALL_DIR/rollback-version"
+    echo "WARN release metadata for $next could not be read; continuing without a rollback path (--allow-unknown-rollback)"
+  elif printf '%s' "$metadata" | grep -Fq "\"$previous\""; then
     printf '%s\n' "$previous" > "$INSTALL_DIR/rollback-version"
   else
     rm -f "$INSTALL_DIR/rollback-version"
@@ -155,16 +170,21 @@ command=${1:-help}; shift || true
 case "$command" in
   install) curl -fsSL https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main/install.sh | bash -s -- "$@" ;;
   update)
-    if [[ -n ${1:-} ]]; then "$INSTALL_DIR/update.sh" --version "$1"; else "$INSTALL_DIR/update.sh"; fi
+    if [[ -n ${1:-} && ${1:-} != -* ]]; then
+      version=$1; shift
+      "$INSTALL_DIR/update.sh" --version "$version" "$@"
+    else
+      "$INSTALL_DIR/update.sh" "$@"
+    fi
     ;;
   status) "${COMPOSE[@]}" ps ;;
   doctor) doctor ;;
   logs) if [[ -n ${1:-} ]]; then "${COMPOSE[@]}" logs --tail=200 -f "$1"; else "${COMPOSE[@]}" logs --tail=200 -f; fi ;;
   configure) case ${1:-} in domain) configure_domain;; smtp) configure_smtp;; *) fail "configure requires domain or smtp";; esac ;;
   backup) backup ;;
-  upgrade) upgrade "${1:-}" ;;
+  upgrade) upgrade "$@" ;;
   rollback) rollback ;;
   uninstall)
     if [[ ${1:-} == --purge-data ]]; then read -r -p "Type b2b-platform to permanently delete all data: " confirm; [[ $confirm == b2b-platform ]] || fail "cancelled"; "${COMPOSE[@]}" down -v; else "${COMPOSE[@]}" down; echo "Services stopped; volumes and configuration retained."; fi ;;
-  *) echo "Usage: b2b-platform install|update [version]|status|doctor|logs [service]|configure domain|configure smtp|backup|upgrade [version]|rollback|uninstall [--purge-data]" ;;
+  *) echo "Usage: b2b-platform install|update [version] [--allow-unknown-rollback]|status|doctor|logs [service]|configure domain|configure smtp|backup|upgrade [version] [--allow-unknown-rollback]|rollback|uninstall [--purge-data]" ;;
 esac

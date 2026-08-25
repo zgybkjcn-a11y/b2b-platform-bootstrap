@@ -5,19 +5,25 @@ umask 077
 INSTALL_DIR=${INSTALL_DIR:-/opt/b2b-platform}
 BOOTSTRAP_BASE=${BOOTSTRAP_BASE:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main}
 RELEASE_VERSION=""
+ALLOW_UNKNOWN_ROLLBACK=false
 
 usage() {
   cat <<'EOF'
-Usage: update.sh [--version vX.Y.Z]
+Usage: update.sh [--version vX.Y.Z] [--allow-unknown-rollback]
 
 Updates the installed B2B Platform control files and application images.
 Without --version, the current stable.json release is used.
+
+--allow-unknown-rollback proceeds even when the release metadata that
+declares rollback compatibility cannot be read. The upgrade then has no
+rollback path, and the database is never downgraded.
 EOF
 }
 
 while (($#)); do
   case "$1" in
     --version) RELEASE_VERSION=${2:?missing version}; shift 2 ;;
+    --allow-unknown-rollback) ALLOW_UNKNOWN_ROLLBACK=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -106,7 +112,9 @@ if $same_version; then
 fi
 
 upgrade_log=$(mktemp "$tmp/upgrade.XXXXXX")
-run_upgrade() { "$INSTALL_DIR/b2b-platform" upgrade "$RELEASE_VERSION" 2>&1 | tee "$upgrade_log"; }
+upgrade_args=("$RELEASE_VERSION")
+[[ $ALLOW_UNKNOWN_ROLLBACK == true ]] && upgrade_args+=(--allow-unknown-rollback)
+run_upgrade() { "$INSTALL_DIR/b2b-platform" upgrade "${upgrade_args[@]}" 2>&1 | tee "$upgrade_log"; }
 
 if ! run_upgrade; then
   if grep -Eqi '401|unauthorized|authentication required|denied' "$upgrade_log"; then
