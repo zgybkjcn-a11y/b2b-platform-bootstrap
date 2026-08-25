@@ -11,6 +11,10 @@ jobs:
       - uses: actions/checkout@v4
 
       # Invoked via `bash` so the suite does not depend on the execute bit
-      # surviving a checkout.
+      # surviving a checkout. REQUIRE_DOCKER makes the container-backed
+      # checks fail instead of skip: the runner always has docker, so a
+      # skip here would be a silently green no-op.
       - name: Run control-file tests
+        env:
+          REQUIRE_DOCKER: 1
         run: bash tests/run-tests.sh

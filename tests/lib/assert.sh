@@ -42,7 +42,21 @@ assert_equals() {
 
 # Tests that drive real containers call this first so the suite degrades to
 # SKIP rather than FAIL on machines without docker.
+#
+# In CI docker is always present, so a skip there would mean the check
+# silently covered nothing while the run still reported green. Set
+# REQUIRE_DOCKER=1 (the workflow does) to turn that skip into a failure.
 require_docker() {
-  command -v docker >/dev/null 2>&1 || skip "docker is not installed"
-  docker info >/dev/null 2>&1 || skip "docker daemon is not reachable"
+  local why
+  if ! command -v docker >/dev/null 2>&1; then
+    why="docker is not installed"
+  elif ! docker info >/dev/null 2>&1; then
+    why="docker daemon is not reachable"
+  else
+    return 0
+  fi
+  if [[ ${REQUIRE_DOCKER:-0} == 1 ]]; then
+    fail "$why -- REQUIRE_DOCKER=1 means this check must not be skipped"
+  fi
+  skip "$why"
 }

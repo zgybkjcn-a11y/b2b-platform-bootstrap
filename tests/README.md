@@ -8,6 +8,14 @@ No network, no GHCR credentials, no real containers required. Tests that do
 need docker (`test_caddyfiles.sh`, `test_compose_config.sh`) report SKIP
 rather than FAIL when it is unavailable.
 
+Set `REQUIRE_DOCKER=1` to turn that skip into a failure. CI does this,
+because the runner always has docker and a skip there would report green
+while checking nothing:
+
+```bash
+REQUIRE_DOCKER=1 bash tests/run-tests.sh
+```
+
 ## How the hermetic tests work
 
 `update.sh` and `b2b-platform` are driven against a `mktemp -d` sandbox
