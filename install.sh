@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 
-INSTALL_DIR=/opt/b2b-platform
+INSTALL_DIR=${INSTALL_DIR:-/opt/b2b-platform}
 BOOTSTRAP_BASE=${BOOTSTRAP_BASE:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main}
 RELEASE_VERSION=""
 while (($#)); do case "$1" in --version) RELEASE_VERSION=${2:?missing version}; shift 2;; *) echo "Unknown option: $1" >&2; exit 2;; esac; done

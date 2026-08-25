@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-INSTALL_DIR=/opt/b2b-platform
+INSTALL_DIR=${INSTALL_DIR:-/opt/b2b-platform}
 BOOTSTRAP_BASE=${BOOTSTRAP_BASE:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main}
 ENV_FILE=$INSTALL_DIR/.env
 COMPOSE=(docker compose --project-directory "$INSTALL_DIR" --env-file "$ENV_FILE" -f "$INSTALL_DIR/compose.yml")

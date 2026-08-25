@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 umask 077
 
-INSTALL_DIR=/opt/b2b-platform
+INSTALL_DIR=${INSTALL_DIR:-/opt/b2b-platform}
 BOOTSTRAP_BASE=${BOOTSTRAP_BASE:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main}
 RELEASE_VERSION=""
 
