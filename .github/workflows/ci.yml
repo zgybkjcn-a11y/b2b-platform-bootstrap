@@ -1,0 +1,16 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  control-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Invoked via `bash` so the suite does not depend on the execute bit
+      # surviving a checkout.
+      - name: Run control-file tests
+        run: bash tests/run-tests.sh
