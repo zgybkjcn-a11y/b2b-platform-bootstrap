@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+#
+# Stub `docker` for the hermetic control-file tests.
+#
+# It models exactly one behaviour that matters for the regression under
+# test: bringing up `caddy` FAILS while $INSTALL_DIR/.env still points at
+# the pre-upgrade APP_VERSION. That mirrors production, where the new
+# compose.yml makes caddy depend on `web` being healthy and the previous
+# web image cannot satisfy the new healthcheck.
+#
+# Everything else succeeds with the minimum output its caller parses.
+
+set -uo pipefail
+
+[[ -n ${STUB_DOCKER_LOG:-} ]] && printf 'docker %s\n' "$*" >> "$STUB_DOCKER_LOG"
+
+env_get() { sed -n "s/^$1=//p" "${INSTALL_DIR:-}/.env" 2>/dev/null | tail -1; }
+
+# wait_for_healthy() -> service_health_status() -> docker inspect.
+# Report healthy so the caller returns at once instead of sleeping.
+if [[ ${1:-} == inspect ]]; then
+  echo healthy
+  exit 0
+fi
+
+# docker login, or anything else we do not model.
+if [[ ${1:-} != compose ]]; then
+  exit 0
+fi
+shift
+
+# Skip the global compose flags the control scripts always pass.
+while (($#)); do
+  case ${1:-} in
+    --project-directory|--env-file|-f|--file|-p|--project-name)
+      shift 2 || exit 1 ;;
+    *) break ;;
+  esac
+done
+
+sub=${1:-}
+shift || true
+
+case $sub in
+  up)
+    # Any `up` that includes caddy evaluates the web healthcheck, because
+    # caddy declares `depends_on: {web: {condition: service_healthy}}`.
+    if printf '%s\n' "$@" | grep -qx -- caddy; then
+      if [[ $(env_get APP_VERSION) == "${STUB_OLD_VERSION:-__unset__}" ]]; then
+        echo "dependency failed to start: container b2b-platform-web-1 is unhealthy" >&2
+        exit 1
+      fi
+    fi
+    ;;
+  ps)
+    if [[ ${1:-} == -q ]]; then
+      echo stubcontainer0001
+    else
+      echo 'NAME                  IMAGE     STATUS'
+      echo 'b2b-platform-web-1    stub      Up (healthy)'
+    fi
+    ;;
+  exec)
+    # backup() posts to /backups then to /backups/<id>/verify.
+    if printf '%s\n' "$@" | grep -q '/verify'; then
+      echo '{"verification":"valid"}'
+    else
+      echo '{"id":"stub-backup-0001"}'
+    fi
+    ;;
+  config|pull|run|logs|down|stop|start|restart|version) ;;
+  *) ;;
+esac
+
+exit 0

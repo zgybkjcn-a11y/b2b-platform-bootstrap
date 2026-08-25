@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#
+# Stub `id`. Both update.sh and b2b-platform gate on
+#   [[ $(id -u) -eq 0 ]] || fail "run with sudo"
+# The tests run unprivileged against a mktemp sandbox, so report root for
+# `id -u` only and delegate every other form to the real binary.
+
+if [[ $# -eq 1 && ${1:-} == -u ]]; then
+  echo 0
+  exit 0
+fi
+
+for candidate in /usr/bin/id /bin/id; do
+  [[ -x $candidate ]] && exec "$candidate" "$@"
+done
+
+echo "id stub: real id binary not found" >&2
+exit 1

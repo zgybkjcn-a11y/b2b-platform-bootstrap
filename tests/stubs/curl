@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#
+# Stub `curl` for the hermetic control-file tests.
+#
+# Serves $BOOTSTRAP_BASE/* straight out of the repository working tree (so
+# the scripts under test "download" the artefacts of the current commit),
+# and succeeds for the deployment's own /health probe.
+#
+# Any other URL is a hard failure. That is deliberate: it proves the
+# control scripts perform no unexpected network access.
+
+set -uo pipefail
+
+env_get() { sed -n "s/^$1=//p" "${INSTALL_DIR:-}/.env" 2>/dev/null | tail -1; }
+
+out=""
+url=""
+while (($#)); do
+  case $1 in
+    -o|--output)
+      out=${2:?curl stub: -o needs a value}; shift 2 ;;
+    --max-time|--retry|--retry-delay|--connect-timeout|--header|-H)
+      shift 2 ;;
+    -*)
+      shift ;;                     # -f -s -S -L and friends
+    *)
+      url=$1; shift ;;
+  esac
+done
+
+[[ -n $url ]] || { echo "curl stub: no URL given" >&2; exit 2; }
+
+emit() { if [[ -n $out ]]; then cat > "$out"; else cat; fi; }
+
+health_url="$(env_get PUBLIC_ORIGIN)/health"
+base=${BOOTSTRAP_BASE:-}
+
+if [[ -n $health_url && $url == "$health_url" ]]; then
+  printf '%s' '{"ok":true,"stub":true}' | emit
+  exit 0
+fi
+
+if [[ -n $base && $url == "$base"/* ]]; then
+  rel=${url#"$base"/}
+  src=$base/$rel
+  if [[ -f $src ]]; then
+    emit < "$src"
+    exit 0
+  fi
+  # Mirror curl -f behaviour for a missing remote file.
+  echo "curl stub: no such file under BOOTSTRAP_BASE: $rel" >&2
+  exit 22
+fi
+
+echo "curl stub: unexpected URL (no network access is permitted in tests): $url" >&2
+exit 1
