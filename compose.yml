@@ -50,7 +50,7 @@ services:
     environment:
       DATABASE_ADMIN_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       DATABASE_URL: postgres://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    command: [pnpm, --filter, api, db:migrate]
+    command: [node, apps/api/dist/migrate-postgres.mjs]
     depends_on: { postgres: { condition: service_healthy } }
     restart: "no"
   api:
