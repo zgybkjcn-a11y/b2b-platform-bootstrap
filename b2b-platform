@@ -116,10 +116,34 @@ rollback() {
   echo "Rolled back application images to $target"
 }
 doctor() {
-  local failed=0 mode origin
+  local failed=0 mode origin template
   mode=$(env_get DEPLOYMENT_MODE); origin=$(env_get PUBLIC_ORIGIN)
+  # Caddy 模板与 DEPLOYMENT_MODE 解耦；旧安装没有 CADDY_TEMPLATE 时沿用 mode。
+  template=$(env_get CADDY_TEMPLATE); template=${template:-$mode}
   [[ $(stat -c %a "$ENV_FILE") == 600 ]] || { echo "FAIL .env permissions must be 600"; failed=1; }
   [[ $mode == domain && $origin == https://* ]] || [[ $mode == ip && $origin == http://* ]] || { echo "FAIL deployment mode/origin mismatch"; failed=1; }
+  case $template in
+    domain|ip) ;;
+    tunnel) [[ $mode == domain ]] || { echo "FAIL CADDY_TEMPLATE=tunnel requires DEPLOYMENT_MODE=domain"; failed=1; } ;;
+    *) echo "FAIL invalid CADDY_TEMPLATE: $template"; failed=1 ;;
+  esac
+  if [[ -f $INSTALL_DIR/Caddyfile.$template ]]; then
+    if cmp -s "$INSTALL_DIR/Caddyfile" "$INSTALL_DIR/Caddyfile.$template"; then
+      echo "OK Caddyfile matches the $template template"
+    else
+      echo "FAIL Caddyfile drifted from Caddyfile.$template; run b2b-platform update to reinstall it"
+      failed=1
+    fi
+  fi
+  # cloudflared 可能不在本机（容器里或另一台机器），所以这里只 WARN；
+  # 隧道真的断了会由下面的 public health 探活直接 FAIL。
+  if [[ $template == tunnel ]]; then
+    if systemctl is-active --quiet cloudflared 2>/dev/null; then
+      echo "OK cloudflared is active"
+    else
+      echo "WARN cloudflared is not active on this host; the tunnel must reach http://127.0.0.1:$(env_get PUBLIC_HTTP_PORT)"
+    fi
+  fi
   "${COMPOSE[@]}" config -q || failed=1
   "${COMPOSE[@]}" ps
   health && echo "OK public health" || { echo "FAIL public health"; failed=1; }
@@ -133,11 +157,32 @@ configure_domain() {
   local server_ip; server_ip=$(hostname -I | awk '{print $1}')
   getent ahostsv4 "$host" | awk '{print $1}' | grep -Fxq "$server_ip" || fail "DNS does not point to $server_ip"
   for port in 80 443; do ss -H -ltn "sport = :$port" | grep -q . && fail "port $port is already in use" || true; done
-  env_set DEPLOYMENT_MODE domain; env_set PUBLIC_HOST "$host"; env_set PUBLIC_HTTP_PORT 80; env_set PUBLIC_HTTPS_HOST 0.0.0.0; env_set PUBLIC_HTTPS_PORT 443; env_set PUBLIC_ORIGIN "https://$host"; env_set SESSION_COOKIE_SECURE true
+  env_set DEPLOYMENT_MODE domain; env_set CADDY_TEMPLATE domain; env_set PUBLIC_HOST "$host"; env_set PUBLIC_HTTP_PORT 80; env_set PUBLIC_HTTPS_HOST 0.0.0.0; env_set PUBLIC_HTTPS_PORT 443; env_set PUBLIC_ORIGIN "https://$host"; env_set SESSION_COOKIE_SECURE true
   cp "$INSTALL_DIR/Caddyfile.domain" "$INSTALL_DIR/Caddyfile"
   "${COMPOSE[@]}" up -d --force-recreate api web caddy
   for _ in {1..30}; do health && { echo "Domain enabled: https://$host (existing sessions must sign in again)"; return; }; sleep 2; done
   fail "domain health check failed; inspect b2b-platform logs caddy"
+}
+# 隧道入口：TLS 由 Cloudflare 边缘终止，cloudflared 从本机回源到 Caddy 的高位端口。
+# 应用侧仍是 domain 语义（HTTPS origin + Secure Cookie），只有 Caddy 模板不同，
+# 所以这里不做 domain 模式那两项校验（解析必须等于本机 IP、80/443 必须空闲）——
+# Cloudflare 代理后域名解析到边缘 IP，且隧道不需要任何入站端口。
+configure_tunnel() {
+  local host port current_port
+  read -r -p "Tunnel hostname (example: app.example.com): " host
+  [[ $host =~ ^[A-Za-z0-9.-]+$ && $host == *.* ]] || fail "invalid hostname"
+  getent ahosts "$host" >/dev/null || echo "WARN $host does not resolve yet; create the tunnel DNS record before going live"
+  current_port=$(env_get PUBLIC_HTTP_PORT); current_port=${current_port:-8080}
+  read -r -p "Local HTTP port for cloudflared to reach [$current_port]: " port; port=${port:-$current_port}
+  [[ $port =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )) || fail "tunnel port must be between 1024 and 65535"
+  env_set DEPLOYMENT_MODE domain; env_set CADDY_TEMPLATE tunnel; env_set PUBLIC_HOST "$host"
+  env_set PUBLIC_HTTP_PORT "$port"; env_set PUBLIC_HTTPS_HOST 127.0.0.1; env_set PUBLIC_HTTPS_PORT 44443
+  env_set PUBLIC_ORIGIN "https://$host"; env_set SESSION_COOKIE_SECURE true
+  cp "$INSTALL_DIR/Caddyfile.tunnel" "$INSTALL_DIR/Caddyfile"
+  "${COMPOSE[@]}" up -d --force-recreate api worker dispatcher web caddy
+  systemctl is-active --quiet cloudflared || printf 'WARN cloudflared is not active here; the tunnel must route\n  hostname: %s\n  service: http://127.0.0.1:%s\n' "$host" "$port"
+  for _ in {1..30}; do health && { echo "Tunnel entry enabled: https://$host (existing sessions must sign in again)"; return; }; sleep 2; done
+  fail "tunnel health check failed; inspect b2b-platform logs caddy and systemctl status cloudflared"
 }
 configure_smtp() {
   local host port secure user password from
@@ -160,11 +205,11 @@ case "$command" in
   status) "${COMPOSE[@]}" ps ;;
   doctor) doctor ;;
   logs) if [[ -n ${1:-} ]]; then "${COMPOSE[@]}" logs --tail=200 -f "$1"; else "${COMPOSE[@]}" logs --tail=200 -f; fi ;;
-  configure) case ${1:-} in domain) configure_domain;; smtp) configure_smtp;; *) fail "configure requires domain or smtp";; esac ;;
+  configure) case ${1:-} in domain) configure_domain;; tunnel) configure_tunnel;; smtp) configure_smtp;; *) fail "configure requires domain, tunnel or smtp";; esac ;;
   backup) backup ;;
   upgrade) upgrade "${1:-}" ;;
   rollback) rollback ;;
   uninstall)
     if [[ ${1:-} == --purge-data ]]; then read -r -p "Type b2b-platform to permanently delete all data: " confirm; [[ $confirm == b2b-platform ]] || fail "cancelled"; "${COMPOSE[@]}" down -v; else "${COMPOSE[@]}" down; echo "Services stopped; volumes and configuration retained."; fi ;;
-  *) echo "Usage: b2b-platform install|update [version]|status|doctor|logs [service]|configure domain|configure smtp|backup|upgrade [version]|rollback|uninstall [--purge-data]" ;;
+  *) echo "Usage: b2b-platform install|update [version]|status|doctor|logs [service]|configure domain|configure tunnel|configure smtp|backup|upgrade [version]|rollback|uninstall [--purge-data]" ;;
 esac

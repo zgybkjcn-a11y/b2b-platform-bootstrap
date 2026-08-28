@@ -53,12 +53,16 @@ install -d -m 0700 "$INSTALL_DIR"
 curl -fsSL "$BOOTSTRAP_BASE/compose.yml" -o "$INSTALL_DIR/compose.yml"
 curl -fsSL "$BOOTSTRAP_BASE/Caddyfile.domain" -o "$INSTALL_DIR/Caddyfile.domain"
 curl -fsSL "$BOOTSTRAP_BASE/Caddyfile.ip" -o "$INSTALL_DIR/Caddyfile.ip"
+curl -fsSL "$BOOTSTRAP_BASE/Caddyfile.tunnel" -o "$INSTALL_DIR/Caddyfile.tunnel"
 curl -fsSL "$BOOTSTRAP_BASE/b2b-platform" -o "$INSTALL_DIR/b2b-platform"
 curl -fsSL "$BOOTSTRAP_BASE/SHA256SUMS" -o "$INSTALL_DIR/SHA256SUMS"
 curl -fsSL "$BOOTSTRAP_BASE/update.sh" -o "$INSTALL_DIR/update.sh"
 curl -fsSL "$BOOTSTRAP_BASE/install.sh" -o "$INSTALL_DIR/install.sh"
 chmod 0755 "$INSTALL_DIR/install.sh" "$INSTALL_DIR/update.sh"
-(cd "$INSTALL_DIR" && sha256sum -c SHA256SUMS)
+(cd "$INSTALL_DIR" && sha256sum -c --ignore-missing SHA256SUMS)
+for file in b2b-platform update.sh install.sh compose.yml Caddyfile.ip Caddyfile.domain Caddyfile.tunnel; do
+  grep -qE "[[:space:]]\*?${file//./\\.}\$" "$INSTALL_DIR/SHA256SUMS" || fail "SHA256SUMS does not cover $file"
+done
 chmod 0755 "$INSTALL_DIR/b2b-platform"
 ln -sf "$INSTALL_DIR/b2b-platform" /usr/local/bin/b2b-platform
 
@@ -68,13 +72,25 @@ read -r -p "GitHub username: " GH_USER
 read -r -s -p "GHCR token (read:packages only): " GH_TOKEN; echo
 printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_USER" --password-stdin
 unset GH_TOKEN
-read -r -p "Deployment mode [domain/ip]: " MODE
-[[ $MODE == domain || $MODE == ip ]] || fail "mode must be domain or ip"
+read -r -p "Deployment mode [domain/tunnel/ip]: " MODE
+[[ $MODE == domain || $MODE == tunnel || $MODE == ip ]] || fail "mode must be domain, tunnel or ip"
+# TEMPLATE 选 Caddy 模板，APP_MODE 是应用侧语义。tunnel 的应用语义与 domain 相同
+# （HTTPS origin + Secure Cookie），差别只在 TLS 由 Cloudflare 边缘终止、Caddy 在
+# 高位端口上服务明文 HTTP 供本机 cloudflared 回源，因此不检查 80/443 也不查解析。
+TEMPLATE=$MODE; APP_MODE=$MODE
 if [[ $MODE == domain ]]; then
   read -r -p "Domain (example: app.example.com): " HOST
   [[ $HOST =~ ^[A-Za-z0-9.-]+$ && $HOST == *.* ]] || fail "invalid domain"
   HTTP_PORT=80; HTTPS_HOST=0.0.0.0; HTTPS_PORT=443; ORIGIN="https://$HOST"; COOKIE=true
   for port in 80 443; do ss -H -ltn "sport = :$port" | grep -q . && fail "port $port is already in use" || true; done
+elif [[ $MODE == tunnel ]]; then
+  APP_MODE=domain
+  read -r -p "Tunnel hostname (example: app.example.com): " HOST
+  [[ $HOST =~ ^[A-Za-z0-9.-]+$ && $HOST == *.* ]] || fail "invalid hostname"
+  read -r -p "Local HTTP port for cloudflared to reach [8080]: " HTTP_PORT; HTTP_PORT=${HTTP_PORT:-8080}
+  [[ $HTTP_PORT =~ ^[0-9]+$ ]] && (( HTTP_PORT >= 1024 && HTTP_PORT <= 65535 )) || fail "tunnel port must be between 1024 and 65535"
+  ss -H -ltn "sport = :$HTTP_PORT" | grep -q . && fail "port $HTTP_PORT is already in use" || true
+  HTTPS_HOST=127.0.0.1; HTTPS_PORT=44443; ORIGIN="https://$HOST"; COOKIE=true
 else
   HOST=$(hostname -I | awk '{print $1}')
   read -r -p "Public server IP [$HOST]: " entered; HOST=${entered:-$HOST}
@@ -89,7 +105,8 @@ read -r -p "First platform administrator email: " ADMIN_EMAIL
 secret() { openssl rand -base64 32 | tr -d '\n'; }
 cat > "$INSTALL_DIR/.env" <<EOF
 APP_VERSION=$RELEASE_VERSION
-DEPLOYMENT_MODE=$MODE
+DEPLOYMENT_MODE=$APP_MODE
+CADDY_TEMPLATE=$TEMPLATE
 PUBLIC_HOST=$HOST
 PUBLIC_HTTP_PORT=$HTTP_PORT
 PUBLIC_HTTPS_HOST=$HTTPS_HOST
@@ -115,7 +132,7 @@ SMTP_USER=
 SMTP_PASSWORD=
 EOF
 chmod 0600 "$INSTALL_DIR/.env"
-cp "$INSTALL_DIR/Caddyfile.$MODE" "$INSTALL_DIR/Caddyfile"
+cp "$INSTALL_DIR/Caddyfile.$TEMPLATE" "$INSTALL_DIR/Caddyfile"
 cd "$INSTALL_DIR"
 "${compose[@]}" pull
 "${compose[@]}" up -d postgres redis minio

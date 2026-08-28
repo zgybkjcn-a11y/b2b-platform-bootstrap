@@ -1,0 +1,36 @@
+# Cloudflare Tunnel 模板：TLS 由 Cloudflare 边缘终止，Caddy 只在容器 80 上提供明文
+# HTTP，由同机的 cloudflared 回源。站点地址显式带 http:// 前缀，Caddy 因此不会为它
+# 申请 ACME 证书，也不会把 80 重定向到 443。
+#
+# 与 Caddyfile.domain 的区别只在 TLS 终止位置，应用侧语义相同：
+# DEPLOYMENT_MODE 仍是 domain、PUBLIC_ORIGIN 仍是 https://<host>、Cookie 仍是 Secure。
+# 选择模板的是 .env 里的 CADDY_TEMPLATE=tunnel，不是新的 DEPLOYMENT_MODE。
+#
+# X-Forwarded-For 必须显式从 Cf-Connecting-Ip 映射：Cloudflare 会把真实客户端 IP 同时
+# 放在 Cf-Connecting-Ip 和 X-Forwarded-For 里，但 Caddy 默认不信任未列入 trusted_proxies
+# 的上游，会丢弃进来的 XFF 并改写成对端地址（docker 网桥网关）。不映射的话 API 侧
+# login:ip: 限流桶会退化成全网共享一个，审计日志也丢客户端 IP。
+#
+# HSTS 由 Cloudflare 下发，这里显式删掉源站的 Strict-Transport-Security。
+http://{$PUBLIC_HOST} {
+	encode gzip zstd
+
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy api:31001 {
+			header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
+		}
+	}
+	handle {
+		reverse_proxy web:31000 {
+			header_up X-Forwarded-For {http.request.header.Cf-Connecting-Ip}
+		}
+	}
+	header {
+		-Strict-Transport-Security
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
