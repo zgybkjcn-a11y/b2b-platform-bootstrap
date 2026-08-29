@@ -1,0 +1,4 @@
+{
+  "version": "v0.1.22",
+  "rollbackCompatibleFrom": ["v0.1.21", "v0.1.20"]
+}
