@@ -71,6 +71,8 @@ sudo b2b-platform rollback
 
 备份存放在 Docker `backup-data` volume。定期从“系统设置 > 数据管理”下载加密归档到异地存储，并单独保管 `BACKUP_ENCRYPTION_KEY` 与 `TENANT_SETTINGS_ENCRYPTION_KEYS`。每季度在隔离环境做恢复演练。
 
+`TENANT_SETTINGS_ENCRYPTION_KEYS` 使用 `keyId:base64`（每个 key 解码后必须为 32 字节），`TENANT_SETTINGS_ACTIVE_KEY_ID` 指向新写入密钥；轮换时保留旧 key 直到所有历史记录完成迁移。`DATA_BACKEND=json` 的本地兼容模式在未配置密钥时只会在固定数据目录生成一次 `0600` 的 `.tenant-settings-key` 并跨重启复用；`NODE_ENV=production` 缺少显式密钥会直接启动失败。无法解密的历史连接只标记为 `reauthorization_required`，不会输出或猜测迁移任何凭证。
+
 ## 卸载
 
 ```bash
