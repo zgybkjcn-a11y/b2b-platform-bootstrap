@@ -12,6 +12,9 @@ x-api-env: &api-env
   WEB_URL: ${PUBLIC_ORIGIN}
   EXPORT_WEB_URL: http://web:31000
   TRUST_PROXY: "true"
+  # 平台管理员配置「默认代理」时的部署白名单（逗号分隔 host）。代理跑在宿主机上时
+  # 地址必然是内网（如 docker 网关 172.18.0.1），不加进白名单就存不进去。留空＝不允许内网代理。
+  PLATFORM_PRIVATE_UPSTREAM_HOSTS: ${PLATFORM_PRIVATE_UPSTREAM_HOSTS:-}
   TENANT_SETTINGS_ENCRYPTION_KEYS: ${TENANT_SETTINGS_ENCRYPTION_KEYS}
   TENANT_SETTINGS_ACTIVE_KEY_ID: ${TENANT_SETTINGS_ACTIVE_KEY_ID:-v1}
   BACKUP_SERVICE_URL: http://backup:31004
