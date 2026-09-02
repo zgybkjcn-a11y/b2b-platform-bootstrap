@@ -15,6 +15,17 @@ x-api-env: &api-env
   # 平台管理员配置「默认代理」时的部署白名单（逗号分隔 host）。代理跑在宿主机上时
   # 地址必然是内网（如 docker 网关 172.18.0.1），不加进白名单就存不进去。留空＝不允许内网代理。
   PLATFORM_PRIVATE_UPSTREAM_HOSTS: ${PLATFORM_PRIVATE_UPSTREAM_HOSTS:-}
+  # 平台级出网通道。PSI、Exa 竞品发现、AI 调用和目标站抓取（robots/sitemap/404/llms）
+  # 走的是 proxyDispatcher() 不带参数的形态，读的就是这里的进程环境，共 8 处调用点；
+  # 国内机房不配代理，这些会静默退回直连而报告照常生成。Google 租户链路另有一层——
+  # 组织「运行参数 → 默认代理」（withOrganizationProxy），两层并存互不覆盖。留空＝直连，
+  # 行为与旧版逐字节一致。此前生产靠手工 compose.override.yml 注入，而 update.sh 用显式
+  # -f compose.yml 调 docker compose，override 不会被自动加载，一次 update 就会丢掉代理。
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  # api 的 healthcheck 是 wget，而 wget 会读 HTTP_PROXY/NO_PROXY：配了代理却不排除回环与
+  # 服务名，健康检查会被送进代理并失败，再由 depends_on 拖垮 web。所以默认值必须带上它们。
+  NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,postgres,redis,minio,caddy,backup,web,api,worker,dispatcher}
   TENANT_SETTINGS_ENCRYPTION_KEYS: ${TENANT_SETTINGS_ENCRYPTION_KEYS}
   TENANT_SETTINGS_ACTIVE_KEY_ID: ${TENANT_SETTINGS_ACTIVE_KEY_ID:-v1}
   BACKUP_SERVICE_URL: http://backup:31004
