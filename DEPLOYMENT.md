@@ -8,7 +8,7 @@
 - **GitHub SaaS 多租户仓库**：[`zgybkjcn-a11y/b2b-marketing-intelligence-platform`](https://github.com/zgybkjcn-a11y/b2b-marketing-intelligence-platform)，主要分支为 `feat/multi-tenant-saas`。本机验证通过后提交并推送，再通过 release tag 生成 GHCR 镜像。
 - **局域网服务器 SaaS 多租户生产环境**：`192.168.10.110`，对外入口为 `app.yibohose.com`。服务器不从本机工作树运行代码，只通过 bootstrap 使用固定 GHCR 镜像；升级统一执行 `sudo b2b-platform update <tag>`。
 
-关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.38`；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。
+关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.39`；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。
 
 ## 10 分钟安装
 
