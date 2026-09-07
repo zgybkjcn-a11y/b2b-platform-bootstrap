@@ -2,6 +2,14 @@
 
 适用于 Ubuntu 22.04/24.04 amd64 云服务器。生产源码和 GHCR 镜像保持私有；公开 bootstrap 仓库仅发布安装器、Compose、Caddy 模板与本指南。
 
+## 环境对应关系
+
+- **本机开发测试**：`/home/deniskorfei/projects/b2b-marketing-intelligence-platform-saas` 的 Docker Compose，Web/API 端口为 `31002/31003`。这里用于改代码、跑测试和验收，不是生产入口。
+- **GitHub SaaS 多租户仓库**：[`zgybkjcn-a11y/b2b-marketing-intelligence-platform`](https://github.com/zgybkjcn-a11y/b2b-marketing-intelligence-platform)，主要分支为 `feat/multi-tenant-saas`。本机验证通过后提交并推送，再通过 release tag 生成 GHCR 镜像。
+- **局域网服务器 SaaS 多租户生产环境**：`192.168.10.110`，对外入口为 `app.yibohose.com`。服务器不从本机工作树运行代码，只通过 bootstrap 使用固定 GHCR 镜像；升级统一执行 `sudo b2b-platform update <tag>`。
+
+关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.38`；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。
+
 ## 10 分钟安装
 
 准备至少 2 GB 内存、10 GB 可用磁盘。域名模式需开放 TCP 80/443；临时 IP 模式只需开放安装时选择的高位 TCP 端口（默认 8080）。安装器不会修改路由器、SSH 或 UFW。
