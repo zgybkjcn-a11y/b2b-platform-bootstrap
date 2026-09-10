@@ -1,6 +1,8 @@
 name: b2b-platform
 x-api-env: &api-env
   APP_VERSION: ${APP_VERSION}
+  REPOSITORY_COMMIT: ${REPOSITORY_COMMIT:-}
+  IMAGE_DIGEST: ${IMAGE_DIGEST:-}
   DEPLOYMENT_MODE: ${DEPLOYMENT_MODE}
   PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
   SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE}
@@ -72,7 +74,10 @@ services:
   api:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}
     restart: unless-stopped
-    environment: *api-env
+    environment:
+      <<: *api-env
+      # Master key is API-only. Customer sites receive a derived per-site key.
+      FORM_SUBMISSION_SIGNING_SECRET: ${FORM_SUBMISSION_SIGNING_SECRET}
     volumes: [api-data:/app/apps/api/data]
     depends_on: { migrate: { condition: service_completed_successfully }, redis: { condition: service_healthy } }
     healthcheck: { test: [CMD, wget, -qO-, http://localhost:31001/health], interval: 15s, timeout: 5s, retries: 12 }

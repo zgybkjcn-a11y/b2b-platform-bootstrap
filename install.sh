@@ -10,6 +10,27 @@ while (($#)); do case "$1" in --version) RELEASE_VERSION=${2:?missing version}; 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 [[ $(id -u) -eq 0 ]] || fail "run with sudo"
 compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
+env_set() {
+  local key=$1 value=$2 escaped
+  escaped=$(printf '%s' "$value" | sed 's/[&|]/\\&/g')
+  if grep -q "^$key=" "$INSTALL_DIR/.env"; then
+    sed -i "s|^$key=.*|$key=$escaped|" "$INSTALL_DIR/.env"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$INSTALL_DIR/.env"
+  fi
+  chmod 0600 "$INSTALL_DIR/.env"
+}
+capture_api_image_provenance() {
+  local version=$1 image_ref digest revision
+  image_ref="ghcr.io/zgybkjcn-a11y/b2b-platform-api:$version"
+  digest=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_ref" 2>/dev/null \
+    | sed -n 's|^ghcr.io/zgybkjcn-a11y/b2b-platform-api@\(sha256:[a-f0-9]\{64\}\)$|\1|p' | head -1)
+  revision=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_ref" 2>/dev/null || true)
+  [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]] || fail "API image has no verifiable RepoDigest: $image_ref"
+  [[ $revision =~ ^[a-f0-9]{40}$ ]] || fail "API image has no verifiable OCI revision: $image_ref"
+  env_set IMAGE_DIGEST "$digest"
+  env_set REPOSITORY_COMMIT "$revision"
+}
 wait_for_healthy() {
   local service=$1 timeout=${2:-240} elapsed=0 container status
   while (( elapsed < timeout )); do
@@ -105,6 +126,8 @@ read -r -p "First platform administrator email: " ADMIN_EMAIL
 secret() { openssl rand -base64 32 | tr -d '\n'; }
 cat > "$INSTALL_DIR/.env" <<EOF
 APP_VERSION=$RELEASE_VERSION
+REPOSITORY_COMMIT=
+IMAGE_DIGEST=
 DEPLOYMENT_MODE=$APP_MODE
 CADDY_TEMPLATE=$TEMPLATE
 PUBLIC_HOST=$HOST
@@ -124,6 +147,7 @@ BACKUP_SERVICE_TOKEN=$(secret)
 BACKUP_ENCRYPTION_KEY=$(secret)
 TENANT_SETTINGS_ENCRYPTION_KEYS=v1:$(secret)
 TENANT_SETTINGS_ACTIVE_KEY_ID=v1
+FORM_SUBMISSION_SIGNING_SECRET=$(secret)
 AUTH_EMAIL_FROM=
 SMTP_HOST=
 SMTP_PORT=587
@@ -135,6 +159,7 @@ chmod 0600 "$INSTALL_DIR/.env"
 cp "$INSTALL_DIR/Caddyfile.$TEMPLATE" "$INSTALL_DIR/Caddyfile"
 cd "$INSTALL_DIR"
 "${compose[@]}" pull
+capture_api_image_provenance "$RELEASE_VERSION"
 "${compose[@]}" up -d postgres redis minio
 "${compose[@]}" run --rm migrate
 "${compose[@]}" up -d api worker dispatcher backup web caddy

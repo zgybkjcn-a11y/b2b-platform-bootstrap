@@ -14,6 +14,17 @@ env_set() {
   if grep -q "^$key=" "$ENV_FILE"; then sed -i "s|^$key=.*|$key=$escaped|" "$ENV_FILE"; else printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"; fi
   chmod 0600 "$ENV_FILE"
 }
+capture_api_image_provenance() {
+  local version=$1 image_ref digest revision
+  image_ref="ghcr.io/zgybkjcn-a11y/b2b-platform-api:$version"
+  digest=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image_ref" 2>/dev/null \
+    | sed -n 's|^ghcr.io/zgybkjcn-a11y/b2b-platform-api@\(sha256:[a-f0-9]\{64\}\)$|\1|p' | head -1)
+  revision=$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_ref" 2>/dev/null || true)
+  [[ $digest =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "FAIL API image has no verifiable RepoDigest: $image_ref" >&2; return 1; }
+  [[ $revision =~ ^[a-f0-9]{40}$ ]] || { echo "FAIL API image has no verifiable OCI revision: $image_ref" >&2; return 1; }
+  env_set IMAGE_DIGEST "$digest"
+  env_set REPOSITORY_COMMIT "$revision"
+}
 health() { curl -fsS --max-time 15 "$(env_get PUBLIC_ORIGIN)/health" >/dev/null; }
 service_health_status() {
   local service=$1 container status
@@ -76,12 +87,16 @@ tenant_encryption_check() {
   echo "OK tenant settings encryption keyring ($active)"
 }
 upgrade() {
-  local next=${1:-} previous
+  local next=${1:-} previous previous_image_digest previous_repository_commit
   [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
   previous=$(env_get APP_VERSION)
+  previous_image_digest=$(env_get IMAGE_DIGEST)
+  previous_repository_commit=$(env_get REPOSITORY_COMMIT)
   [[ $next != "$previous" ]] || { echo "Already on $next"; return; }
   restore_previous_application() {
     env_set APP_VERSION "$previous"
+    env_set IMAGE_DIGEST "$previous_image_digest"
+    env_set REPOSITORY_COMMIT "$previous_repository_commit"
     "${COMPOSE[@]}" up -d api worker dispatcher backup web || return 1
     wait_for_healthy web
   }
@@ -94,7 +109,10 @@ upgrade() {
     echo "WARN release does not declare $previous schema-compatible; rollback will be disabled"
   fi
   env_set APP_VERSION "$next"
-  if ! "${COMPOSE[@]}" pull api worker dispatcher backup web migrate || ! "${COMPOSE[@]}" run --rm migrate || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web; then
+  if ! "${COMPOSE[@]}" pull api worker dispatcher backup web migrate \
+    || ! capture_api_image_provenance "$next" \
+    || ! "${COMPOSE[@]}" run --rm migrate \
+    || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web; then
     restore_previous_application || true
     fail "upgrade failed; application images restored to $previous"
   fi
@@ -110,8 +128,20 @@ rollback() {
   echo "Rollback never downgrades the database. Continue only when release notes declare schema compatibility."
   read -r -p "Type $target to continue: " confirmation
   [[ $confirmation == "$target" ]] || fail "cancelled"
-  local current; current=$(env_get APP_VERSION); env_set APP_VERSION "$target"
-  if ! "${COMPOSE[@]}" up -d api worker dispatcher backup web || ! health; then env_set APP_VERSION "$current"; "${COMPOSE[@]}" up -d api worker dispatcher backup web; fail "rollback health check failed"; fi
+  local current current_image_digest current_repository_commit
+  current=$(env_get APP_VERSION)
+  current_image_digest=$(env_get IMAGE_DIGEST)
+  current_repository_commit=$(env_get REPOSITORY_COMMIT)
+  env_set APP_VERSION "$target"
+  if ! capture_api_image_provenance "$target" \
+    || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web \
+    || ! wait_for_healthy web || ! health; then
+    env_set APP_VERSION "$current"
+    env_set IMAGE_DIGEST "$current_image_digest"
+    env_set REPOSITORY_COMMIT "$current_repository_commit"
+    "${COMPOSE[@]}" up -d api worker dispatcher backup web
+    fail "rollback health check failed"
+  fi
   printf '%s\n' "$current" > "$INSTALL_DIR/rollback-version"
   echo "Rolled back application images to $target"
 }

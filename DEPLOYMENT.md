@@ -77,6 +77,8 @@ sudo b2b-platform rollback
 
 `update` 会先从公开 bootstrap 下载并校验控制文件，保留 `.env` 和当前 IP/domain 模式，再按 `stable.json` 或指定版本执行升级。升级顺序固定为配置检查、创建并验证加密备份、拉取固定镜像、幂等 migration、切换服务、健康检查。失败自动恢复上一应用镜像和控制文件，数据库不会自动降级。旧服务器也可执行 `curl -fsSL https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main/update.sh | sudo bash`。migration 必须 expand-first；只有发行说明明确 schema 兼容时才可 rollback。
 
+镜像 tag 不是运行取证。安装/升级会在 pull 后读取 API 镜像的真实 `RepoDigest` 和 OCI `org.opencontainers.image.revision`，写入受保护的 `.env` 并传给 API/worker；缺少合法 digest 或 40 位 commit 时停止启动。升级失败和显式 rollback 会连同 `APP_VERSION` 一起恢复或重取 `IMAGE_DIGEST`、`REPOSITORY_COMMIT`。发布端 `stable.json` 同时记录 API/Web digest；部署检查中缺任一侧证据只能显示 `unverifiable`，不得判为 matched。完整取证和表单回执密钥操作见 [`docs/162`](162-Provenance-and-Form-Receipt-Operations-2026-09-10.md)。
+
 备份存放在 Docker `backup-data` volume。定期从“系统设置 > 数据管理”下载加密归档到异地存储，并单独保管 `BACKUP_ENCRYPTION_KEY` 与 `TENANT_SETTINGS_ENCRYPTION_KEYS`。每季度在隔离环境做恢复演练。
 
 `TENANT_SETTINGS_ENCRYPTION_KEYS` 使用 `keyId:base64`（每个 key 解码后必须为 32 字节），`TENANT_SETTINGS_ACTIVE_KEY_ID` 指向新写入密钥；轮换时保留旧 key 直到所有历史记录完成迁移。`DATA_BACKEND=json` 的本地兼容模式在未配置密钥时只会在固定数据目录生成一次 `0600` 的 `.tenant-settings-key` 并跨重启复用；`NODE_ENV=production` 缺少显式密钥会直接启动失败。无法解密的历史连接只标记为 `reauthorization_required`，不会输出或猜测迁移任何凭证。
