@@ -74,6 +74,35 @@ done
 [[ -e "$INSTALL_DIR/Caddyfile" ]] && cp -p "$INSTALL_DIR/Caddyfile" "$control_backup/Caddyfile"
 [[ -e "$INSTALL_DIR/.env" ]] && cp -p "$INSTALL_DIR/.env" "$control_backup/.env"
 
+secret() { openssl rand -base64 32 | tr -d '\n'; }
+
+# 新版本引入的必需 env 键要在这里补齐，否则老安装的 .env 里没有它，Compose 取到空串，
+# 相关功能在生产上静默降级（表单回执就这么在 v0.1.4x 一直返回 503）。
+#
+# 只列「生成新随机值不会破坏既有数据」的键。BACKUP_ENCRYPTION_KEY 和
+# TENANT_SETTINGS_ENCRYPTION_KEYS 绝不放进来：给它们生成新值会让既有备份解不开、
+# 租户加密配置全部失效 —— 缺这两个只警告，交人工处理。
+GENERATED_ENV_KEYS=(FORM_SUBMISSION_SIGNING_SECRET)
+WARN_ONLY_ENV_KEYS=(BACKUP_ENCRYPTION_KEY TENANT_SETTINGS_ENCRYPTION_KEYS)
+
+# 幂等：只在键**不存在**时追加。已存在就不动 —— 覆盖 FORM_SUBMISSION_SIGNING_SECRET
+# 会让所有已派发的站点 key 立即失效（docs/162 §2）。
+ensure_env_keys() {
+  local key added=()
+  for key in "${GENERATED_ENV_KEYS[@]}"; do
+    grep -q "^$key=" "$INSTALL_DIR/.env" && continue
+    printf '%s=%s\n' "$key" "$(secret)" >> "$INSTALL_DIR/.env"
+    added+=("$key")
+  done
+  chmod 0600 "$INSTALL_DIR/.env"
+  (( ${#added[@]} )) && echo "Added missing configuration: ${added[*]}"
+  for key in "${WARN_ONLY_ENV_KEYS[@]}"; do
+    grep -q "^$key=" "$INSTALL_DIR/.env" \
+      || echo "WARN $key is missing; it is not auto-generated because a new value would invalidate existing encrypted data"
+  done
+  return 0
+}
+
 install_control_files() {
   local file mode_bits
   for file in "${CONTROL_FILES[@]}"; do
@@ -108,6 +137,9 @@ restore_and_restart_caddy() {
 }
 
 install_control_files
+# 必须在 Compose 校验之前：新版 compose.yml 可能引用老 .env 里还没有的键。
+# 失败路径由 restore_control_files 连同 .env 一起回滚（:75 已备份），语义一致。
+ensure_env_keys
 
 new_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
 if ! "${new_compose[@]}" config -q; then

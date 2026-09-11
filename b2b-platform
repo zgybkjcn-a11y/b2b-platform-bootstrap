@@ -86,6 +86,19 @@ tenant_encryption_check() {
   [[ $active_found == true ]] || { echo "FAIL active tenant settings key $active is missing from keyring"; return 1; }
   echo "OK tenant settings encryption keyring ($active)"
 }
+# 缺这个键时表单回执端点返回 503「回执服务未配置」，但应用其余部分完全正常 ——
+# 没有这项检查，整条站点提交证据线会静默断掉（v0.1.4x 生产上真实发生过）。
+# API 要求至少 32 字符（services/formSubmissionSigning.ts）。
+form_receipt_secret_check() {
+  local value; value=$(env_get FORM_SUBMISSION_SIGNING_SECRET)
+  if [[ -z $value ]]; then
+    echo "FAIL FORM_SUBMISSION_SIGNING_SECRET is not configured; the form receipt endpoint will return 503"
+    echo "     run b2b-platform update to add it, or append it to $ENV_FILE (never overwrite an existing value: it invalidates every issued site key)"
+    return 1
+  fi
+  (( ${#value} >= 32 )) || { echo "FAIL FORM_SUBMISSION_SIGNING_SECRET must be at least 32 characters"; return 1; }
+  echo "OK form receipt signing secret"
+}
 upgrade() {
   local next=${1:-} previous previous_image_digest previous_repository_commit
   [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
@@ -178,6 +191,7 @@ doctor() {
   "${COMPOSE[@]}" ps
   health && echo "OK public health" || { echo "FAIL public health"; failed=1; }
   tenant_encryption_check || failed=1
+  form_receipt_secret_check || failed=1
   [[ -n $(env_get SMTP_HOST) ]] || echo "WARN SMTP is not configured; password reset and email alerts are unavailable"
   return "$failed"
 }
