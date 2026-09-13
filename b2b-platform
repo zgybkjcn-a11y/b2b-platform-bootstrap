@@ -89,6 +89,27 @@ tenant_encryption_check() {
 # 缺这个键时表单回执端点返回 503「回执服务未配置」，但应用其余部分完全正常 ——
 # 没有这项检查，整条站点提交证据线会静默断掉（v0.1.4x 生产上真实发生过）。
 # API 要求至少 32 字符（services/formSubmissionSigning.ts）。
+browser_audit_egress_check() {
+  local value; value=$(env_get BROWSER_AUDIT_EGRESS_TOKEN)
+  if [[ -z $value ]]; then
+    echo "FAIL BROWSER_AUDIT_EGRESS_TOKEN is not configured; browser audit P3 will fail closed in proxy deployments"
+    echo "     run b2b-platform update to add it, or append it to $ENV_FILE (never overwrite an existing value)"
+    return 1
+  fi
+  (( ${#value} >= 32 )) || { echo "FAIL BROWSER_AUDIT_EGRESS_TOKEN must be at least 32 characters"; return 1; }
+  local container
+  container=$("${COMPOSE[@]}" ps -q browser-audit-egress 2>/dev/null | head -1)
+  if [[ -z $container ]]; then
+    echo "WARN browser-audit-egress has not been created yet; it is required for P3 in proxy deployments"
+    return 0
+  fi
+  if ! service_is_healthy browser-audit-egress; then
+    echo "FAIL browser-audit-egress is not healthy"
+    return 1
+  fi
+  echo "OK browser audit trusted egress proxy"
+}
+
 form_receipt_secret_check() {
   local value; value=$(env_get FORM_SUBMISSION_SIGNING_SECRET)
   if [[ -z $value ]]; then
@@ -110,6 +131,7 @@ upgrade() {
     env_set APP_VERSION "$previous"
     env_set IMAGE_DIGEST "$previous_image_digest"
     env_set REPOSITORY_COMMIT "$previous_repository_commit"
+    "${COMPOSE[@]}" rm -sf browser-audit-egress >/dev/null 2>&1 || true
     "${COMPOSE[@]}" up -d api worker dispatcher backup web || return 1
     wait_for_healthy web
   }
@@ -122,10 +144,10 @@ upgrade() {
     echo "WARN release does not declare $previous schema-compatible; rollback will be disabled"
   fi
   env_set APP_VERSION "$next"
-  if ! "${COMPOSE[@]}" pull api worker dispatcher backup web migrate \
+  if ! "${COMPOSE[@]}" pull api worker dispatcher backup browser-audit-egress web migrate \
     || ! capture_api_image_provenance "$next" \
     || ! "${COMPOSE[@]}" run --rm migrate \
-    || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web; then
+    || ! "${COMPOSE[@]}" up -d api worker dispatcher backup browser-audit-egress web; then
     restore_previous_application || true
     fail "upgrade failed; application images restored to $previous"
   fi
@@ -146,14 +168,17 @@ rollback() {
   current_image_digest=$(env_get IMAGE_DIGEST)
   current_repository_commit=$(env_get REPOSITORY_COMMIT)
   env_set APP_VERSION "$target"
+  # Rollback targets an older API image that does not contain this entrypoint.
+  # Remove the P3-only sidecar first; the old runner ignores its env and stays fail-closed.
+  "${COMPOSE[@]}" rm -sf browser-audit-egress >/dev/null 2>&1 || true
   if ! capture_api_image_provenance "$target" \
     || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web \
     || ! wait_for_healthy web || ! health; then
     env_set APP_VERSION "$current"
     env_set IMAGE_DIGEST "$current_image_digest"
     env_set REPOSITORY_COMMIT "$current_repository_commit"
-    "${COMPOSE[@]}" up -d api worker dispatcher backup web
-    fail "rollback health check failed"
+    "${COMPOSE[@]}" up -d api worker dispatcher backup browser-audit-egress web
+    fail "rollback health check failed; attempted to restore the current application version"
   fi
   printf '%s\n' "$current" > "$INSTALL_DIR/rollback-version"
   echo "Rolled back application images to $target"
@@ -192,6 +217,7 @@ doctor() {
   health && echo "OK public health" || { echo "FAIL public health"; failed=1; }
   tenant_encryption_check || failed=1
   form_receipt_secret_check || failed=1
+  browser_audit_egress_check || failed=1
   [[ -n $(env_get SMTP_HOST) ]] || echo "WARN SMTP is not configured; password reset and email alerts are unavailable"
   return "$failed"
 }

@@ -8,7 +8,7 @@
 - **GitHub SaaS 多租户仓库**：[`zgybkjcn-a11y/b2b-marketing-intelligence-platform`](https://github.com/zgybkjcn-a11y/b2b-marketing-intelligence-platform)，主要分支为 `feat/multi-tenant-saas`。本机验证通过后提交并推送，再通过 release tag 生成 GHCR 镜像。
 - **局域网服务器 SaaS 多租户生产环境**：`192.168.10.110`，对外入口为 `app.yibohose.com`。服务器不从本机工作树运行代码，只通过 bootstrap 使用固定 GHCR 镜像；升级统一执行 `sudo b2b-platform update <tag>`。
 
-关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.46`；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。
+关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.47`；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。
 
 ## 10 分钟安装
 
@@ -45,6 +45,12 @@ sudo b2b-platform configure domain
 ```
 
 命令会核对 DNS、启用 Secure Cookie、重建入口并健康检查；既有会话需要重新登录。
+
+## 出网代理与浏览器审计
+
+平台的 PSI、AI、Exa 和普通抓取可继续使用 `.env` 中的 `HTTP_PROXY` / `HTTPS_PROXY`。P3 浏览器审计不直接使用这两个变量：它会连接内部 `browser-audit-egress` 服务。该服务在建立 CONNECT 隧道时解析并校验全部 DNS 答案，拒绝私网、保留、链路本地和云元数据地址，然后把选定的公网 IP 固定传给上游代理，避免上游再次按域名解析造成 DNS rebinding。
+
+安装器和升级器会自动生成 `BROWSER_AUDIT_EGRESS_TOKEN`。`browser-audit-egress` 是 P3 专用旁路服务，不作为 API 硬启动依赖；`b2b-platform doctor` 会检查它是否 healthy，缺失时 P3 保持 fail closed。上游代理必须支持 `CONNECT <public-ip>:<url-port>`；若不支持，P3 会保存 failed 证据，不得改成域名 CONNECT、Chrome 直连或删除 SSRF 检查。详见 [`docs/174`](174-Browser-Audit-Trusted-Egress-Proxy-Implementation-2026-09-13.md)。
 
 ## SMTP
 

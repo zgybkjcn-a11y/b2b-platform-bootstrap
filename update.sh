@@ -82,7 +82,7 @@ secret() { openssl rand -base64 32 | tr -d '\n'; }
 # 只列「生成新随机值不会破坏既有数据」的键。BACKUP_ENCRYPTION_KEY 和
 # TENANT_SETTINGS_ENCRYPTION_KEYS 绝不放进来：给它们生成新值会让既有备份解不开、
 # 租户加密配置全部失效 —— 缺这两个只警告，交人工处理。
-GENERATED_ENV_KEYS=(FORM_SUBMISSION_SIGNING_SECRET)
+GENERATED_ENV_KEYS=(FORM_SUBMISSION_SIGNING_SECRET BROWSER_AUDIT_EGRESS_TOKEN)
 WARN_ONLY_ENV_KEYS=(BACKUP_ENCRYPTION_KEY TENANT_SETTINGS_ENCRYPTION_KEYS)
 
 # 幂等：只在键**不存在**时追加。已存在就不动 —— 覆盖 FORM_SUBMISSION_SIGNING_SECRET
@@ -133,7 +133,7 @@ restore_control_files() {
 restore_and_restart_caddy() {
   restore_control_files
   local restored_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
-  "${restored_compose[@]}" up -d api worker dispatcher backup web caddy || true
+  "${restored_compose[@]}" up -d api worker dispatcher backup browser-audit-egress web caddy || true
 }
 
 install_control_files
@@ -145,6 +145,13 @@ new_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INST
 if ! "${new_compose[@]}" config -q; then
   restore_and_restart_caddy
   fail "new control files failed Compose validation; restored control files"
+fi
+# Same-version control-file updates must create the newly introduced internal service.
+# Version upgrades start it only after the new image has been pulled, because the old
+# image does not contain browserAuditEgressProxy.js.
+if $same_version && ! "${new_compose[@]}" up -d browser-audit-egress; then
+  restore_and_restart_caddy
+  fail "could not start browser-audit-egress; restored control files"
 fi
 "$INSTALL_DIR/b2b-platform" doctor || {
   restore_and_restart_caddy
@@ -191,7 +198,7 @@ fi
 
 if ! grep -q "Upgraded to $RELEASE_VERSION" "$upgrade_log"; then
   restore_and_restart_caddy
-  "${new_compose[@]}" up -d api worker dispatcher backup web caddy || true
+  "${new_compose[@]}" up -d api worker dispatcher backup browser-audit-egress web caddy || true
   fail "update failed; restored control files and attempted to restore the previous application version $previous"
 fi
 
