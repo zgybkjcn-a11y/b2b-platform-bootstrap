@@ -85,7 +85,7 @@ services:
       BROWSER_AUDIT_EGRESS_UPSTREAM_PROXY: ${BROWSER_AUDIT_EGRESS_UPSTREAM_PROXY:-}
       BROWSER_AUDIT_HTTPS_UPSTREAM_PROXY: ${HTTPS_PROXY:-}
       BROWSER_AUDIT_HTTP_UPSTREAM_PROXY: ${HTTP_PROXY:-}
-    healthcheck: { test: [CMD, wget, -qO-, http://localhost:3128/health], interval: 15s, timeout: 5s, retries: 12 }
+    healthcheck: { test: [CMD, wget, -qO-, http://127.0.0.1:3128/health], interval: 15s, timeout: 5s, retries: 12 }
   api:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}
     restart: unless-stopped
