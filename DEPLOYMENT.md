@@ -1,5 +1,7 @@
 # Ubuntu SaaS Docker 部署
 
+> S1 升级补充（未发布）：[180](180-Growth-Insights-S1-Data-Trust-2026-09-15.md) 定义 026 migration、旧行组合外键预检、API/Worker/dispatcher 同步升级、统一增长根目录、util-linux/flock、v2 备份及回退限制。隔离演练通过不授权在现有环境执行 migration 或部署。
+
 适用于 Ubuntu 22.04/24.04 amd64 云服务器。生产源码和 GHCR 镜像保持私有；公开 bootstrap 仓库仅发布安装器、Compose、Caddy 模板与本指南。
 
 ## 环境对应关系
@@ -8,7 +10,7 @@
 - **GitHub SaaS 多租户仓库**：[`zgybkjcn-a11y/b2b-marketing-intelligence-platform`](https://github.com/zgybkjcn-a11y/b2b-marketing-intelligence-platform)，主要分支为 `feat/multi-tenant-saas`。本机验证通过后提交并推送，再通过 release tag 生成 GHCR 镜像。
 - **局域网服务器 SaaS 多租户生产环境**：`192.168.10.110`，对外入口为 `app.yibohose.com`。服务器不从本机工作树运行代码，只通过 bootstrap 使用固定 GHCR 镜像；升级统一执行 `sudo b2b-platform update <tag>`。
 
-关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.50`；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。
+关系链固定为：**本机开发测试 → GitHub 仓库 → tag/GHCR 镜像 → 局域网服务器生产**。当前生产验收版本为 `v0.1.55`（v0.1.52–v0.1.55 均为无迁移的 GA4 埋点/插件/设置改动）；开发分支可以领先，但未经发布、备份、迁移和健康检查验收的版本不得直接进入生产。下一发布 `v0.2.0` 带迁移 026（自 025 以来首个 schema 变更），不可回滚，须走独立排练窗口。
 
 ## 10 分钟安装
 

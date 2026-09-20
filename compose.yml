@@ -11,6 +11,7 @@ x-api-env: &api-env
   DATA_BACKEND: postgres
   DATABASE_URL: postgres://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://redis:6379
+  TENANT_GROWTH_DATA_ROOT: /app/apps/api/data/tenant-growth
   WEB_URL: ${PUBLIC_ORIGIN}
   EXPORT_WEB_URL: http://web:31000
   TRUST_PROXY: "true"
@@ -39,6 +40,9 @@ x-api-env: &api-env
   BACKUP_SERVICE_TOKEN: ${BACKUP_SERVICE_TOKEN}
   BACKUP_CONFIGURED: "true"
   AUTH_EMAIL_FROM: ${AUTH_EMAIL_FROM:-}
+  GROWTH_ALERT_EMAIL_ENABLED: ${GROWTH_ALERT_EMAIL_ENABLED:-false}
+  GROWTH_ALERT_COOLDOWN_MINUTES: ${GROWTH_ALERT_COOLDOWN_MINUTES:-360}
+  ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
   SMTP_HOST: ${SMTP_HOST:-}
   SMTP_PORT: ${SMTP_PORT:-587}
   SMTP_SECURE: ${SMTP_SECURE:-true}
@@ -120,7 +124,8 @@ services:
       BACKUP_SERVICE_TOKEN: ${BACKUP_SERVICE_TOKEN}
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
       BACKUP_DIR: /backups
-    volumes: [backup-data:/backups]
+      TENANT_GROWTH_DATA_ROOT: /app/apps/api/data/tenant-growth
+    volumes: [backup-data:/backups, "api-data:/app/apps/api/data:ro"]
     depends_on: { postgres: { condition: service_healthy } }
   web:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-web:${APP_VERSION}
