@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.2",
+  "rollbackCompatibleFrom": [],
+  "notes": "Growth cross-source AI synthesis (M7): on-demand agent analysis on /growth top that correlates GSC x GA4 x site-audit x competitor x AI-visibility into cross-source findings + actionable recommendations, with a numeric evidence gate (every cited metric re-derived against first-party evidence; unverifiable metrics dropped and the finding flagged), unknown-not-zero data-maturity labeling, no fabricated trends, read-only (never touches A4 workflows). Detail tables on the growth page collapse below the synthesis. Migration 027 adds the growth_synthesis table (FORCE RLS, org isolation) and extends tasks_kind_check to include growth_synthesis. Also fixes web TaskShape kind enum that omitted browser_audit/growth_synthesis. Not rollback-safe (027 has no down migration)."
+}
