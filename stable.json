@@ -1,8 +1,8 @@
 {
-  "version": "v0.2.0",
-  "repositoryCommit": "a8a117089f055319687ba454503a6dca74b06b06",
-  "apiImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-api:v0.2.0",
-  "apiImageDigest": "sha256:dcae34d785a65515525f460d749a49a6a8553b2c35ebe7788f1648bb6529e8c7",
-  "webImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-web:v0.2.0",
-  "webImageDigest": "sha256:a3ac0c0d25b96a3f2419d0c9946f8c2b798a397c6163674235beeada7ffc8c57"
+  "version": "v0.2.1",
+  "repositoryCommit": "c09988d9d2d36c08ccbff7d8f5cce970e30a2fe5",
+  "apiImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-api:v0.2.1",
+  "apiImageDigest": "sha256:e01de82d0aef6d9fcaccd5df984ccf61deb4c89d91889c207a092145f935e349",
+  "webImage": "ghcr.io/zgybkjcn-a11y/b2b-platform-web:v0.2.1",
+  "webImageDigest": "sha256:0c10254eb17bbda69542496b498ae0e9e487c363f433e828c8baf1c158354e3b"
 }

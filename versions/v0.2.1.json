@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.1",
+  "rollbackCompatibleFrom": ["v0.2.0"],
+  "notes": "Growth/settings UX batch: Anthropic+Gemini model discovery and near-button status in org AI settings, current default main AI shown, app-wide ConfirmDangerButton (5s countdown) for destructive actions, growth-insights collapse tables (source aggregation + page funnel) and backfill layout fix, Google generative-AI report external link, contact_click 'enabled/accumulating' copy. No migration."
+}
