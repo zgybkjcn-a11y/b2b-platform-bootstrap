@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.4",
+  "rollbackCompatibleFrom": ["v0.2.3"],
+  "notes": "Growth synthesis (M7) reliability + accuracy: (1) an explicit citable-evidence catalog (ref -> field=value) is appended to the prompt and the model may only cite metrics from it, verbatim, leaving metrics empty when unsure — cuts the numeric-gate rejections; (2) hardened JSON-only instruction plus parseJsonLoose now falls back to extracting the first {...}/[...] span, so a model that wraps JSON in prose (Anthropic attempt-1) still parses; (3) the generate call now retries up to 3 attempts total and, on final failure, surfaces the concrete reason (timeout / non-JSON / schema mismatch) instead of a generic message. No migration; rollback-safe to v0.2.3."
+}
