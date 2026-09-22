@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.3",
+  "rollbackCompatibleFrom": ["v0.2.2"],
+  "notes": "Growth synthesis (M7) output-size fix: the single unbounded JSON generation was truncating at max_tokens and taking ~125s (OpenAI returned invalid/truncated JSON, Anthropic parse-failed). Prompt now hard-caps output to at most 10 findings (narrative <=200 chars each) and 10 recommendations (<=200 chars), with a server-side belt-and-suspenders slice/clip; input context trimmed (page rows 20->12, health items 15->10, technical-evidence blob 400->200 chars) to cut generation time. Keeps maxTokens 8192 as ceiling. No migration; rollback-safe to v0.2.2."
+}
