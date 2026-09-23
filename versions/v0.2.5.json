@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.5",
+  "rollbackCompatibleFrom": ["v0.2.4"],
+  "notes": "Persist growth synthesis history and expose history results: add an organization-scoped history list endpoint, a growth synthesis tab in history, history links from the growth page, and a standalone history result page. No migration; rollback-safe to v0.2.4."
+}
