@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.6",
+  "rollbackCompatibleFrom": ["v0.2.5"],
+  "notes": "Growth synthesis result header: show generation timestamp on the growth page result block, add a collapsible result section (default expanded), and add a link button to the current analysis history report. No migration; rollback-safe to v0.2.5."
+}
