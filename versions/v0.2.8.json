@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.8",
+  "rollbackCompatibleFrom": ["v0.2.7", "v0.2.6"],
+  "notes": "Growth synthesis control row layout: move the history-analysis link to the far right, after the generation timestamp and the expand/collapse control. No migration; rollback-safe to v0.2.7 and v0.2.6."
+}
