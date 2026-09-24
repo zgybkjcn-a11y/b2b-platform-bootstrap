@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.7",
+  "rollbackCompatibleFrom": ["v0.2.6", "v0.2.5"],
+  "notes": "Growth synthesis result UI cleanup: keep the generation timestamp and history-analysis entry in the top control row, default result details to collapsed, remove the duplicate result header, and remove the redundant direct history-report button. No migration; rollback-safe to v0.2.6 and v0.2.5."
+}
