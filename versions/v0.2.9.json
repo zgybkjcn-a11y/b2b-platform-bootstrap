@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.9",
+  "rollbackCompatibleFrom": ["v0.2.8", "v0.2.7"],
+  "notes": "Growth Insights Google Generative AI card cleanup: show only the unavailable state and a button linking to the corresponding Google Search Console performance report; move the official-report status explanation into a title hover/focus hint. No migration; rollback-safe to v0.2.8 and v0.2.7."
+}
