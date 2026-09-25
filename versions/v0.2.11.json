@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.11",
+  "rollbackCompatibleFrom": ["v0.2.10", "v0.2.9"],
+  "notes": "Raise the growth-synthesis output token budget from 8192 to 16384. Measured on the same production context, one successful run already used 7755/8192 completion tokens (4244 of them reasoning tokens), so the coverage floor added in v0.2.10 would sooner or later hit the cap and truncate the JSON. No migration; rollback-safe to v0.2.10 and v0.2.9."
+}
