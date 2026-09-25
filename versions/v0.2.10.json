@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.10",
+  "rollbackCompatibleFrom": ["v0.2.9", "v0.2.8"],
+  "notes": "Growth synthesis robustness: tolerate object-shaped auxiliary lists (openQuestions/dataGaps/unknowns) and render them structured, repair unescaped quotes/raw newlines in model JSON, corrective retries that feed the previous failure back to the model, name the offending fields in the error, and record provenance (raw/dropped finding counts plus the actually-served model with an audit event when an upstream substitutes the model). Prompt now carries a coverage floor (>=6 findings/actions, every available source cited). No migration; rollback-safe to v0.2.9 and v0.2.8."
+}
