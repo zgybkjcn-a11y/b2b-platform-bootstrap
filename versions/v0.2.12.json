@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.12",
+  "rollbackCompatibleFrom": ["v0.2.11"],
+  "notes": "GSC keyword long-term library (product tier C). New migration 028 adds gsc_search_terms, a per-day query / query_page fact table with FORCE row-level security that is a read-only projection of the immutable GSC snapshot JSON on disk and can be rebuilt from disk at any time. Adds an ingest wired into the tenant growth runner (failure only records a quality flag, never blocks collection), an authenticated GET /api/growth-terms detail/movers/CSV read API, a /growth/terms page (keyword x page detail, date-range filter, top movers, CSV export, coverage disclosure), and a gsc:terms:backfill one-off script. 028 is purely additive: the previous image never reads the new table, so a rollback to v0.2.11 keeps running. Run `pnpm gsc:terms:backfill --commit` after the upgrade to import the history already accumulated on disk; every collection run then upserts incrementally."
+}
