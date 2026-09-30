@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.16",
+  "rollbackCompatibleFrom": ["v0.2.15"],
+  "notes": "GSC cross-dimension CSV exports now use Chinese names. The country->Chinese mapping was promoted from a frontend-only module to a shared source (packages/shared-types/src/countryNames.ts) so both the display layer and the API export layer use one table. In the growth-dimensions CSV export the country column of the page_country / query_country detail views now emits Chinese country names (alpha-3 -> Chinese, uncovered codes fall back to the raw code), and the region column of the market rollup and query-market exports now emits Chinese region names (NA -> 北美, null -> 未归类) via the existing shared MARKET_LABELS. The JSON API contract is unchanged: it still returns raw alpha-3 country codes and raw region enums; only the CSV bytes differ. No SQL migration and no schema change -- a rollback to v0.2.15 keeps running."
+}
