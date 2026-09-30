@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.15",
+  "rollbackCompatibleFrom": ["v0.2.14"],
+  "notes": "GSC cross-dimension detail view: the country column now shows Chinese country names. The raw GSC country dimension is an ISO-3166-1 alpha-3 code returned lowercase (usa/deu/chn); a new frontend-only mapping (apps/web/lib/gscCountries.ts, alpha-3 -> Chinese, ~250 entries) renders it as a Chinese name in the raw-detail view of the growth insights split section, with unknown codes falling back to the raw code. The API contract, shared types and CSV export keep the raw code unchanged (localization stays in the display layer). Frontend only: no SQL migration, no API change — a rollback to v0.2.14 keeps running."
+}
