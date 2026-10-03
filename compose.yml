@@ -143,7 +143,7 @@ services:
   web:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-web:${APP_VERSION}
     restart: unless-stopped
-    environment: { API_URL: http://api:31001, WEB_AUTH_REQUIRED: "true", DEPLOYMENT_MODE: "${DEPLOYMENT_MODE}" }
+    environment: { API_URL: http://api:31001, WEB_AUTH_REQUIRED: "true", DEPLOYMENT_MODE: "${DEPLOYMENT_MODE}", GROWTH_PRIVACY_FILTER: "${GROWTH_PRIVACY_FILTER:-strict}" }
     depends_on: { api: { condition: service_healthy } }
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:31000/login').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
