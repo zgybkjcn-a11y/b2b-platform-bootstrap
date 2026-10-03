@@ -17,6 +17,7 @@ x-api-env: &api-env
   TRUST_PROXY: "true"
   # 平台管理员配置「默认代理」时的部署白名单（逗号分隔 host）。代理跑在宿主机上时
   # 地址必然是内网（如 docker 网关 172.18.0.1），不加进白名单就存不进去。留空＝不允许内网代理。
+  # host.docker.internal 也在这里：平台层 AI 通道可直接指向宿主机发布的本地中转端口。
   PLATFORM_PRIVATE_UPSTREAM_HOSTS: ${PLATFORM_PRIVATE_UPSTREAM_HOSTS:-}
   # 平台级出网通道。PSI、Exa 竞品发现、AI 调用和目标站抓取（robots/sitemap/404/llms）
   # 走的是 proxyDispatcher() 不带参数的形态，读的就是这里的进程环境，共 8 处调用点；
@@ -50,6 +51,11 @@ x-api-env: &api-env
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   UPDATE_MANIFEST_URL: ${UPDATE_MANIFEST_URL:-https://raw.githubusercontent.com/zgybkjcn-a11y/b2b-platform-bootstrap/main/stable.json}
   UPDATE_RELEASE_URL_TEMPLATE: ${UPDATE_RELEASE_URL_TEMPLATE:-https://github.com/zgybkjcn-a11y/b2b-marketing-intelligence-platform/releases/tag/{version}}
+# 需要访问宿主机发布端口（本机 AI 中转 cli-proxy-api :8317 等）的容器用这条稳定别名。
+# 直接写 docker 网关 IP（172.18.0.1）在网络被删除重建后会随子网一起漂走；host-gateway
+# 别名始终指向宿主机，与子网无关。宿主端口没发布或服务没起时表现为连接失败，不是静默降级。
+x-host-gateway-hosts: &host-gateway-hosts
+  - "host.docker.internal:host-gateway"
 services:
   postgres:
     image: postgres:16-alpine
@@ -93,6 +99,7 @@ services:
   api:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}
     restart: unless-stopped
+    extra_hosts: *host-gateway-hosts
     environment:
       <<: *api-env
       # Master key is API-only. Customer sites receive a derived per-site key.
@@ -105,6 +112,7 @@ services:
   worker:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}
     restart: unless-stopped
+    extra_hosts: *host-gateway-hosts
     command: [node, apps/api/dist/growthWorker.js]
     environment: *api-env
     volumes: [api-data:/app/apps/api/data]
@@ -112,6 +120,7 @@ services:
   dispatcher:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}
     restart: unless-stopped
+    extra_hosts: *host-gateway-hosts
     command: [node, apps/api/dist/growthScheduleDispatcher.js]
     environment: *api-env
     depends_on: { migrate: { condition: service_completed_successfully }, redis: { condition: service_healthy } }
