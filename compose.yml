@@ -19,6 +19,10 @@ x-api-env: &api-env
   # 地址必然是内网（如 docker 网关 172.18.0.1），不加进白名单就存不进去。留空＝不允许内网代理。
   # host.docker.internal 也在这里：平台层 AI 通道可直接指向宿主机发布的本地中转端口。
   PLATFORM_PRIVATE_UPSTREAM_HOSTS: ${PLATFORM_PRIVATE_UPSTREAM_HOSTS:-}
+  # 增长数据的 PII 模式过滤开关：strict（默认）＝按模式剔除查询词/GA4 维度行（邮箱、电话/长数字、
+  # token 形式），off＝保留原始行。关闭后平台会处理可能含个人信息的原始搜索词——改动前先确认
+  # /privacy、/google-data 的对外表述与该部署的实际行为一致。URL 规范化与跟踪参数处理不随之关闭。
+  GROWTH_PRIVACY_FILTER: ${GROWTH_PRIVACY_FILTER:-strict}
   # 平台级出网通道。PSI、Exa 竞品发现、AI 调用和目标站抓取（robots/sitemap/404/llms）
   # 走的是 proxyDispatcher() 不带参数的形态，读的就是这里的进程环境，共 8 处调用点；
   # 国内机房不配代理，这些会静默退回直连而报告照常生成。Google 租户链路另有一层——
