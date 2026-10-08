@@ -26,6 +26,54 @@ capture_api_image_provenance() {
   env_set REPOSITORY_COMMIT "$revision"
 }
 health() { curl -fsS --max-time 15 "$(env_get PUBLIC_ORIGIN)/health" >/dev/null; }
+pin_backup_retention() {
+  local image; image="ghcr.io/zgybkjcn-a11y/b2b-platform-api@$(env_get IMAGE_DIGEST)"
+  # Probe the actual packaged implementation, without network or database access.
+  # A missing capability may retain an existing pin; a Docker failure may not.
+  if docker run --rm --network none --entrypoint node "$image" -e 'const s=require("fs").readFileSync("/app/apps/api/dist/services/postgresBackup.js","utf8");process.exit(["agent_attachment_bodies","agent_private_preview_bodies"].every(t=>s.includes("--exclude-table-data=public."+t))?0:42)' >/dev/null 2>&1; then
+    env_set AGENT_BACKUP_IMAGE "$image"
+  else
+    local probe_status=$?
+    [[ $probe_status == 42 && $(env_get AGENT_BACKUP_IMAGE) =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]]
+  fi
+}
+start_pinned_backup() {
+  [[ $(env_get AGENT_BACKUP_IMAGE) =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]] || return 1
+  "${COMPOSE[@]}" up -d --no-deps backup && wait_for_healthy backup
+}
+rollback_compatible() {
+  local next=$1 previous=$2
+  # Parse only the declared array. Mentioning a version in notes is not approval.
+  curl -fsSL "$BOOTSTRAP_BASE/versions/$next.json" | docker run --rm -i --network none --entrypoint node \
+    "ghcr.io/zgybkjcn-a11y/b2b-platform-api:$previous" -e 'let s="";process.stdin.on("data",b=>s+=b);process.stdin.on("end",()=>{try{const m=JSON.parse(s);process.exit(m.version===process.argv[1]&&Array.isArray(m.rollbackCompatibleFrom)&&m.rollbackCompatibleFrom.every(v=>typeof v==="string"&&/^v\d+\.\d+\.\d+$/.test(v))&&m.rollbackCompatibleFrom.includes(process.argv[2])?0:1)}catch{process.exit(1)}})' "$next" "$previous"
+}
+pin_attachment_cleanup() {
+  local image; image="ghcr.io/zgybkjcn-a11y/b2b-platform-api@$(env_get IMAGE_DIGEST)"
+  if docker run --rm --network none --entrypoint node "$image" -e 'process.exit(require("fs").existsSync("/app/apps/api/dist/agentAttachmentCleanup.js")?0:42)' >/dev/null 2>&1; then
+    env_set AGENT_ATTACHMENT_CLEANUP_IMAGE "$image"
+  else
+    # Explicit updates to pre-attachment releases must retain the working daemon.
+    local probe_status=$?
+    [[ $probe_status == 42 && $(env_get AGENT_ATTACHMENT_CLEANUP_IMAGE) =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]]
+  fi
+}
+start_pinned_attachment_cleanup() {
+  local image; image=$(env_get AGENT_ATTACHMENT_CLEANUP_IMAGE)
+  [[ -n $image ]] || return 0
+  [[ $image =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]] || return 1
+  "${COMPOSE[@]}" up -d --no-deps attachment-cleanup && wait_for_healthy attachment-cleanup
+}
+start_agent_followups() {
+  local image; image="ghcr.io/zgybkjcn-a11y/b2b-platform-api@$(env_get IMAGE_DIGEST)"
+  if docker run --rm --network none --entrypoint node "$image" -e 'process.exit(require("fs").existsSync("/app/apps/api/dist/agentFollowupWorker.js")?0:42)' >/dev/null 2>&1; then
+    "${COMPOSE[@]}" up -d --no-deps agent-followup && wait_for_healthy agent-followup
+  else
+    local probe_status=$?
+    [[ $probe_status == 42 ]] || return "$probe_status"
+    # Older application rollback pauses observations; durable due jobs survive.
+    "${COMPOSE[@]}" stop agent-followup
+  fi
+}
 service_health_status() {
   local service=$1 container status
   container=$("${COMPOSE[@]}" ps -q "$service" 2>/dev/null | head -1)
@@ -123,6 +171,9 @@ form_receipt_secret_check() {
 upgrade() {
   local next=${1:-} previous previous_image_digest previous_repository_commit
   [[ $next =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "usage: b2b-platform upgrade vX.Y.Z"
+  # A pre-retention update.sh would restore its old compose after our migration,
+  # undoing both pins. Refuse it before backup/migration; use the current updater.
+  [[ ${B2B_RETENTION_UPDATE_PROTOCOL:-} == 1 ]] || fail "this release requires the current verified update.sh; see DEPLOYMENT.md before upgrading older controls"
   previous=$(env_get APP_VERSION)
   previous_image_digest=$(env_get IMAGE_DIGEST)
   previous_repository_commit=$(env_get REPOSITORY_COMMIT)
@@ -133,11 +184,14 @@ upgrade() {
     env_set REPOSITORY_COMMIT "$previous_repository_commit"
     "${COMPOSE[@]}" rm -sf browser-audit-egress >/dev/null 2>&1 || true
     "${COMPOSE[@]}" up -d api worker dispatcher backup web || return 1
+    if [[ -n $(env_get AGENT_BACKUP_IMAGE) ]]; then start_pinned_backup || return 1; fi
+    start_pinned_attachment_cleanup || return 1
+    start_agent_followups || return 1
     wait_for_healthy web
   }
   doctor
   backup
-  if curl -fsSL "$BOOTSTRAP_BASE/versions/$next.json" | grep -Fq "\"$previous\""; then
+  if rollback_compatible "$next" "$previous"; then
     printf '%s\n' "$previous" > "$INSTALL_DIR/rollback-version"
   else
     rm -f "$INSTALL_DIR/rollback-version"
@@ -146,12 +200,15 @@ upgrade() {
   env_set APP_VERSION "$next"
   if ! "${COMPOSE[@]}" pull api worker dispatcher backup browser-audit-egress web migrate \
     || ! capture_api_image_provenance "$next" \
+    || ! pin_attachment_cleanup \
+    || ! pin_backup_retention \
+    || ! start_pinned_backup \
     || ! "${COMPOSE[@]}" run --rm migrate \
-    || ! "${COMPOSE[@]}" up -d api worker dispatcher backup browser-audit-egress web; then
+    || ! "${COMPOSE[@]}" up -d api worker dispatcher backup browser-audit-egress attachment-cleanup web; then
     restore_previous_application || true
     fail "upgrade failed; application images restored to $previous"
   fi
-  if ! wait_for_healthy web || ! health; then
+  if ! start_agent_followups || ! wait_for_healthy web || ! wait_for_healthy attachment-cleanup || ! health; then
     restore_previous_application || true
     fail "health check failed; application images restored to $previous (database was not downgraded)"
   fi
@@ -160,6 +217,10 @@ upgrade() {
 rollback() {
   [[ -f $INSTALL_DIR/rollback-version ]] || fail "no recorded rollback version"
   local target; target=$(<"$INSTALL_DIR/rollback-version")
+  [[ $target =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid recorded rollback version"
+  if [[ -n $(env_get AGENT_ATTACHMENT_CLEANUP_IMAGE) ]]; then
+    start_pinned_backup || fail "retention-safe backup must be healthy before rollback"
+  fi
   echo "Rollback never downgrades the database. Continue only when release notes declare schema compatibility."
   read -r -p "Type $target to continue: " confirmation
   [[ $confirmation == "$target" ]] || fail "cancelled"
@@ -173,11 +234,14 @@ rollback() {
   "${COMPOSE[@]}" rm -sf browser-audit-egress >/dev/null 2>&1 || true
   if ! capture_api_image_provenance "$target" \
     || ! "${COMPOSE[@]}" up -d api worker dispatcher backup web \
+    || ! start_pinned_backup || ! start_pinned_attachment_cleanup \
+    || ! start_agent_followups \
     || ! wait_for_healthy web || ! health; then
     env_set APP_VERSION "$current"
     env_set IMAGE_DIGEST "$current_image_digest"
     env_set REPOSITORY_COMMIT "$current_repository_commit"
-    "${COMPOSE[@]}" up -d api worker dispatcher backup browser-audit-egress web
+    "${COMPOSE[@]}" up -d api worker dispatcher backup browser-audit-egress attachment-cleanup web
+    start_agent_followups || true
     fail "rollback health check failed; attempted to restore the current application version"
   fi
   printf '%s\n' "$current" > "$INSTALL_DIR/rollback-version"
@@ -278,6 +342,11 @@ case "$command" in
   configure) case ${1:-} in domain) configure_domain;; tunnel) configure_tunnel;; smtp) configure_smtp;; *) fail "configure requires domain, tunnel or smtp";; esac ;;
   backup) backup ;;
   upgrade) upgrade "${1:-}" ;;
+  pin-retention) pin_attachment_cleanup && pin_backup_retention ;;
+  recover-retention)
+    start_pinned_backup && start_pinned_attachment_cleanup || fail "retention recovery failed"
+    if "${COMPOSE[@]}" config --services | grep -qx agent-followup; then start_agent_followups; fi
+    ;;
   rollback) rollback ;;
   uninstall)
     if [[ ${1:-} == --purge-data ]]; then read -r -p "Type b2b-platform to permanently delete all data: " confirm; [[ $confirm == b2b-platform ]] || fail "cancelled"; "${COMPOSE[@]}" down -v; else "${COMPOSE[@]}" down; echo "Services stopped; volumes and configuration retained."; fi ;;

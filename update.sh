@@ -120,7 +120,26 @@ install_control_files() {
 }
 
 restore_control_files() {
-  local file mode_bits
+  local file mode_bits cleanup_image backup_image retain=false
+  cleanup_image=$(sed -n 's/^AGENT_ATTACHMENT_CLEANUP_IMAGE=//p' "$INSTALL_DIR/.env" | tail -1)
+  backup_image=$(sed -n 's/^AGENT_BACKUP_IMAGE=//p' "$INSTALL_DIR/.env" | tail -1)
+  if [[ -n $backup_image ]]; then
+    [[ $backup_image =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]] || return 1
+    [[ $cleanup_image =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]] || return 1
+    retain=true
+    # Old control files cannot interpret new env pins. Carry the two verified
+    # service definitions into the restored compose before anything restarts.
+    awk '/^  (backup|attachment-cleanup):$/ {keep=1; count++; print; next}
+         /^  [a-zA-Z0-9_-]+:|^[^ ]/ {keep=0}
+         keep {print} END {if(count!=2) exit 1}' "$tmp/compose.yml" > "$tmp/retention-services.yml" || return 1
+  fi
+  # Observations belong to the active application version, unlike retention.
+  # When reverting to controls predating this service it must not be left orphaned.
+  if $retain; then
+    docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml" stop agent-followup >/dev/null 2>&1 || return 1
+  else
+    docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml" stop agent-followup >/dev/null 2>&1 || true
+  fi
   for file in "${CONTROL_FILES[@]}" Caddyfile .env; do
     [[ -e "$control_backup/$file" ]] || continue
     mode_bits=0644
@@ -128,11 +147,33 @@ restore_control_files() {
     [[ $file == .env ]] && mode_bits=0600
     install -m "$mode_bits" "$control_backup/$file" "$INSTALL_DIR/$file"
   done
+  # A new migration may already have committed. Keep its independently pinned TTL
+  # daemon alive even if the previous control files do not define that service.
+  if [[ $cleanup_image =~ ^ghcr.io/zgybkjcn-a11y/b2b-platform-api@sha256:[a-f0-9]{64}$ ]]; then
+    sed -i '/^AGENT_ATTACHMENT_CLEANUP_IMAGE=/d' "$INSTALL_DIR/.env"
+    printf '%s\n' "AGENT_ATTACHMENT_CLEANUP_IMAGE=$cleanup_image" >> "$INSTALL_DIR/.env"
+  fi
+  if $retain; then
+    sed -i '/^AGENT_BACKUP_IMAGE=/d' "$INSTALL_DIR/.env"
+    printf '%s\n' "AGENT_BACKUP_IMAGE=$backup_image" >> "$INSTALL_DIR/.env"
+    awk 'FNR==NR {block=block $0 ORS; next}
+         /^  (backup|attachment-cleanup):$/ {if(!inserted){printf "%s",block; inserted=1}; skip=1; next}
+         /^  [a-zA-Z0-9_-]+:|^[^ ]/ {skip=0}
+         !skip {print} END {if(!inserted) exit 1}' \
+      "$tmp/retention-services.yml" "$INSTALL_DIR/compose.yml" > "$INSTALL_DIR/compose.yml.retention" || return 1
+    chmod 0644 "$INSTALL_DIR/compose.yml.retention"
+    mv -f "$INSTALL_DIR/compose.yml.retention" "$INSTALL_DIR/compose.yml"
+  fi
+  chmod 0600 "$INSTALL_DIR/.env"
 }
 
 restore_and_restart_caddy() {
-  restore_control_files
+  restore_control_files || fail "cannot safely restore retention services; application restart stopped"
   local restored_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INSTALL_DIR/.env" -f "$INSTALL_DIR/compose.yml")
+  "${restored_compose[@]}" config -q || fail "restored control files failed validation; application restart stopped"
+  if [[ -n $(env_get AGENT_BACKUP_IMAGE) ]]; then
+    bash "$tmp/b2b-platform" recover-retention || fail "cannot restore healthy pinned retention services"
+  fi
   "${restored_compose[@]}" up -d api worker dispatcher backup browser-audit-egress web caddy || true
 }
 
@@ -179,7 +220,7 @@ if $same_version; then
 fi
 
 upgrade_log=$(mktemp "$tmp/upgrade.XXXXXX")
-run_upgrade() { "$INSTALL_DIR/b2b-platform" upgrade "$RELEASE_VERSION" 2>&1 | tee "$upgrade_log"; }
+run_upgrade() { B2B_RETENTION_UPDATE_PROTOCOL=1 "$INSTALL_DIR/b2b-platform" upgrade "$RELEASE_VERSION" 2>&1 | tee "$upgrade_log"; }
 
 if ! run_upgrade; then
   if grep -Eqi '401|unauthorized|authentication required|denied' "$upgrade_log"; then
@@ -198,7 +239,6 @@ fi
 
 if ! grep -q "Upgraded to $RELEASE_VERSION" "$upgrade_log"; then
   restore_and_restart_caddy
-  "${new_compose[@]}" up -d api worker dispatcher backup browser-audit-egress web caddy || true
   fail "update failed; restored control files and attempted to restore the previous application version $previous"
 fi
 

@@ -128,8 +128,43 @@ services:
     command: [node, apps/api/dist/growthScheduleDispatcher.js]
     environment: *api-env
     depends_on: { migrate: { condition: service_completed_successfully }, redis: { condition: service_healthy } }
-  backup:
+  agent-followup:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}
+    restart: unless-stopped
+    command: [node, apps/api/dist/agentFollowupWorker.js]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes: [api-data:/app/apps/api/data:ro]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    healthcheck:
+      test: [CMD, node, -e, "const t=Number(require('fs').readFileSync('/tmp/agent-followup-heartbeat','utf8'));process.exit(Date.now()-t<240000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  attachment-cleanup:
+    # Independent immutable pin keeps TTL cleanup running through application rollback.
+    image: ${AGENT_ATTACHMENT_CLEANUP_IMAGE:-ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}}
+    restart: unless-stopped
+    command: [node, apps/api/dist/agentAttachmentCleanup.js]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AGENT_ATTACHMENT_CLEANUP_INTERVAL_MS: ${AGENT_ATTACHMENT_CLEANUP_INTERVAL_MS:-300000}
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    healthcheck:
+      test: [CMD, node, -e, "const fs=require('fs');const t=Number(fs.readFileSync('/tmp/agent-attachment-cleanup-heartbeat','utf8'));process.exit(Date.now()-t<Number(process.env.AGENT_ATTACHMENT_CLEANUP_INTERVAL_MS)*2+60000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  backup:
+    # Metadata is permanent; temporary attachment bodies must never enter archives,
+    # including after application rollback to a version predating attachments.
+    image: ${AGENT_BACKUP_IMAGE:-ghcr.io/zgybkjcn-a11y/b2b-platform-api:${APP_VERSION}}
     restart: unless-stopped
     command: [node, apps/api/dist/backupService.js]
     environment:
@@ -140,6 +175,7 @@ services:
       TENANT_GROWTH_DATA_ROOT: /app/apps/api/data/tenant-growth
     volumes: [backup-data:/backups, "api-data:/app/apps/api/data:ro"]
     depends_on: { postgres: { condition: service_healthy } }
+    healthcheck: { test: [CMD, wget, -qO-, http://127.0.0.1:31004/health], interval: 5s, timeout: 5s, retries: 12 }
   web:
     image: ghcr.io/zgybkjcn-a11y/b2b-platform-web:${APP_VERSION}
     restart: unless-stopped

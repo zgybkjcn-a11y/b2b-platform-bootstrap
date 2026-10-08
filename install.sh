@@ -161,10 +161,15 @@ cp "$INSTALL_DIR/Caddyfile.$TEMPLATE" "$INSTALL_DIR/Caddyfile"
 cd "$INSTALL_DIR"
 "${compose[@]}" pull
 capture_api_image_provenance "$RELEASE_VERSION"
+"$INSTALL_DIR/b2b-platform" pin-retention
 "${compose[@]}" up -d postgres redis minio
 "${compose[@]}" run --rm migrate
-"${compose[@]}" up -d api worker dispatcher backup web caddy
+"${compose[@]}" up -d api worker dispatcher backup attachment-cleanup agent-followup browser-audit-egress web caddy
 wait_for_healthy web
+wait_for_healthy attachment-cleanup
+wait_for_healthy backup
+wait_for_healthy agent-followup
+wait_for_healthy browser-audit-egress
 ADMIN_RESULT=$("${compose[@]}" exec -T api node apps/api/dist/bootstrapPlatformAdmin.js "$ADMIN_EMAIL")
 ADMIN_RESULT_FILE="$INSTALL_DIR/bootstrap-admin-result.json"
 printf '%s\n' "$ADMIN_RESULT" > "$ADMIN_RESULT_FILE"

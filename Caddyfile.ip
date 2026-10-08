@@ -1,6 +1,9 @@
 http://{$PUBLIC_HOST} {
   encode gzip zstd
-  @api path /api/* /health
+  @api {
+    path /api/* /health
+    not path /api/agent-requests /api/agent-requests/* /api/agent-site-tokens /api/agent-site-tokens/*
+  }
   handle @api {
     reverse_proxy api:31001
   }
