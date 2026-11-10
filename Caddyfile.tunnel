@@ -17,7 +17,7 @@ http://{$PUBLIC_HOST} {
 
 	@api {
 		path /api/* /health
-		not path /api/agent-requests /api/agent-requests/* /api/agent-site-tokens /api/agent-site-tokens/*
+		not path /api/agent-requests /api/agent-requests/* /api/agent-site-tokens /api/agent-site-tokens/* /api/agent-security-audits /api/agent-security-audits/*
 	}
 	handle @api {
 		reverse_proxy api:31001 {
