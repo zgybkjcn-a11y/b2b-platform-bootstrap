@@ -1,0 +1,7 @@
+{
+  "version": "v0.2.38",
+  "rollbackCompatibleFrom": [
+    "v0.2.37"
+  ],
+  "notes": "328 CDN hydration scope completion. v0.2.37 fixed growth timestamps and report HTML, but the full real-history gate exposed the same CDN email transform on the existing content draft (9 React errors, 7 markers). Preserve all session-bearing application HTML with Cache-Control: no-transform in the three official Caddy templates. Anonymous HTML, non-HTML responses, upstream cache directives and CSP remain unchanged. This is an application response-header change, not a Cloudflare zone or WordPress configuration change.\n\nRelative to deployed v0.2.37/d04d1dc4aa714f24859ed5c244cb461a20f3d90b, application/API runtime source, schema055, dependencies, Dockerfiles and release workflow are unchanged. Expanded real-data Chrome coverage includes content drafts, per-page failure context and strict HTML markers/header gates. No error suppression, test timezone workaround, AI generation, website business writes, runner/bridge install, account creation or password reset.\n\nOfficial CI, digest and commit checks, encrypted backup, idempotent migrations, health checks and final real public acceptance remain required. Rollback to v0.2.37 needs no database downgrade but restores its known content-draft CDN hydration defect. v0.2.36 and v0.2.37 tags remain immutable. Concurrent workbench/auth/layout/data/dev-proxy/Feishu changes and the original uncommitted handoff/MEMORY remain excluded."
+}

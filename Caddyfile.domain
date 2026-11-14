@@ -1,11 +1,10 @@
 {$PUBLIC_HOST} {
   encode gzip zstd
-  # Preserve authenticated report HTML through CDN email obfuscation.
-  @report_html {
-    path /report/*
+  # Preserve authenticated application HTML through CDN email obfuscation.
+  @authenticated_html {
     header Cookie *b2b_session=*
   }
-  header @report_html {
+  header @authenticated_html {
     +Cache-Control "no-transform"
     match header Content-Type text/html*
   }

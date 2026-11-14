@@ -15,13 +15,12 @@
 http://{$PUBLIC_HOST} {
 	encode gzip zstd
 
-	# Preserve React's report HTML through CDN email obfuscation. Append to the
-	# upstream cache policy, only for session-bearing report HTML responses.
-	@report_html {
-		path /report/*
+	# Preserve React's authenticated application HTML through CDN transforms.
+	# Append to the upstream cache policy; JSON and anonymous HTML are unchanged.
+	@authenticated_html {
 		header Cookie *b2b_session=*
 	}
-	header @report_html {
+	header @authenticated_html {
 		+Cache-Control "no-transform"
 		match header Content-Type text/html*
 	}
