@@ -1,5 +1,14 @@
 {$PUBLIC_HOST} {
   encode gzip zstd
+  # Preserve authenticated report HTML through CDN email obfuscation.
+  @report_html {
+    path /report/*
+    header Cookie *b2b_session=*
+  }
+  header @report_html {
+    +Cache-Control "no-transform"
+    match header Content-Type text/html*
+  }
   @api {
     path /api/* /health
     not path /api/agent-requests /api/agent-requests/* /api/agent-site-tokens /api/agent-site-tokens/* /api/agent-security-audits /api/agent-security-audits/*
