@@ -1,0 +1,7 @@
+{
+  "version": "v0.2.39",
+  "rollbackCompatibleFrom": [
+    "v0.2.38"
+  ],
+  "notes": "328 PDF radar print geometry repair. Render the same measured scores in a fixed 600px print SVG without animation or ResizeObserver; preserve responsive screen chart, animation, tooltip, missing-dimension semantics and true zeros. Four actual A4 PDFs at desktop/mobile, native print and emulated print pass vertex, center, radius and exact 13-page/37-item/17-evidence/7-recommendation checks.\n\nA bounded slow-navigation investigation observed external hashes overwritten before the first Next history commit. The full UI probe now waits for router/history initialization, retaining the original 30-second reveal and JS/CSP/HTTP checks (438 total assertions). No hash product code changed; the original v0.2.38 timeout remains unconfirmed.\n\nIsolated Node22 candidate, full typecheck, API 2379 pass/223 skip, bootstrap23, offline startup, PG16, migrations55 twice,30 timezone visits and41 real details passed. Formal four-job CI including BFF, published controls/digests/provenance, verified encrypted backup, one official updater and real public acceptance remain mandatory. API/schema055/dependencies/Dockerfiles/control templates unchanged. Rollback to v0.2.38 requires no database downgrade but restores its PDF defect while retaining hydration fixes. Existing tags, handoffs, MEMORY and concurrent work are preserved."
+}
