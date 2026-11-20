@@ -1,0 +1,8 @@
+{
+  "version": "v0.2.41",
+  "rollbackCompatibleFrom": [
+    "v0.2.40",
+    "v0.2.39"
+  ],
+  "notes": "A10 print acceptance patch: remove screen height/scroll limits from growth snapshot evidence only during printing; screen behavior is unchanged. Regression: forty unique snapshot IDs, dataset keys and dates verified in actual desktop/mobile PDFs, 15 checks passed. API, shared types, schema055, dependency lock, Dockerfiles and bootstrap controls remain identical to v0.2.40. The v0.2.40 release and failed production print acceptance are retained. Formal tag CI, immutable image provenance, verified encrypted backup/restore, official production update and new production browser/PDF plus continuous observation gates must pass before A10 closes."
+}
