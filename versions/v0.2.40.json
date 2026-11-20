@@ -1,0 +1,7 @@
+{
+  "version": "v0.2.40",
+  "rollbackCompatibleFrom": [
+    "v0.2.39"
+  ],
+  "notes": "A01-A10 UI and print release. Improved report and growth table printing, detail and permission coverage, durable task submission and retry handling. Product source matches validated candidate 06b1d2fa9e1e874553038f121b4e3a95053e7688. Local API suite 2392 passed; all 225 default conditional skips covered by PostgreSQL/Redis/growth and fixed-runner supplements, including 116 preparation/contract tests with zero skips. Same-candidate browser read/auth checks 294, write-flow checks 97 and print checks 108 passed. Schema055, dependency lock, Dockerfiles and bootstrap controls unchanged from v0.2.39. Rollback to v0.2.39 requires no schema downgrade; retain existing task data and pinned backup/cleanup services. Formal tag CI, verified image provenance, encrypted backup and isolated restore, official production update and post-release acceptance are required before closing A10. Technical-repair capabilities remain outside this release."
+}
