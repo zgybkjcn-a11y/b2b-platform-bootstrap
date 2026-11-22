@@ -1,0 +1,8 @@
+{
+  "version": "v0.2.42",
+  "rollbackCompatibleFrom": [
+    "v0.2.41",
+    "v0.2.40"
+  ],
+  "notes": "Execution visibility and unknown-state release: raw receipts keep the first write error apart from later reconciliation lookup failures (new reconciliationError), the receipt card shows why a write failed and states that a failed lookup is neither success nor failure, the receipt summary now counts unknown executions instead of showing four zeros, and an outcome_unknown item is released only when three facts hold (pre-write rejection, absent original operation, unchanged field value and version). Runner change (site repository) is not part of this image; no schema, dependency lock, Dockerfile or bootstrap control change. Regression: API suite 2493 passed, release-evidence unit cases plus PostgreSQL release/拒绝可见性 cases, browser acceptance 9/9 at 1280 and 375, route checks 133 passed."
+}
