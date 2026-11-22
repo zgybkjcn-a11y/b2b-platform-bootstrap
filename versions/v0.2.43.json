@@ -1,0 +1,8 @@
+{
+  "version": "v0.2.43",
+  "rollbackCompatibleFrom": [
+    "v0.2.42",
+    "v0.2.41"
+  ],
+  "notes": "Fix for v0.2.42's release gate: the evidence-bounded release of an outcome_unknown execution was gated on the receipt being interpreted as unknown, but the real production shape (clientOutcome known + forbidden/403 + reconciliationError not_found + observedTarget) is interpreted as finished, so the release never fired and the execution kept holding the site slot. The release now decides on receipt facts only, and records no server status, phase, events, operation id or after-version it cannot prove. New PostgreSQL case pins that exact shape. No schema, dependency, Dockerfile or bootstrap control change."
+}
