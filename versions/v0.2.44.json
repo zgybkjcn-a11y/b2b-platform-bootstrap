@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.44",
+  "rollbackCompatibleFrom": ["v0.2.43"],
+  "notes": "Count successfully crawled homepages in deep audits; distinguish per-page SEO refusals; allow fresh unapproved reviews to take over failed/cancelled/rejected plan pages (additive migration 056, no history rewritten). Add explicit cross-plan evidence links for separately completed, same-report/site/environment/page Description repairs, requiring native and immediate public verification of the same execution; neither request's original approval or execution lineage changes and no website operation is generated. Preserve host Caddyfile.extra byte-for-byte across updates and validate the full configuration before proxy recreation. Old API/image rollback keeps schema and evidence; old UI cannot display the new annotation and old updater does not understand local extensions, so inspect configuration before any later control-file update. Technical Alt/Schema capabilities remain disabled."
+}

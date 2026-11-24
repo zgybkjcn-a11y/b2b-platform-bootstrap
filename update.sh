@@ -105,6 +105,9 @@ ensure_env_keys() {
 
 install_control_files() {
   local file mode_bits
+  if [[ -e "$INSTALL_DIR/Caddyfile.extra" && ! -f "$INSTALL_DIR/Caddyfile.extra" ]]; then
+    fail "Caddyfile.extra must be a regular file"
+  fi
   for file in "${CONTROL_FILES[@]}"; do
     mode_bits=0644
     [[ $file == b2b-platform || $file == update.sh || $file == install.sh ]] && mode_bits=0755
@@ -112,10 +115,13 @@ install_control_files() {
     mv -f "$INSTALL_DIR/$file.new" "$INSTALL_DIR/$file"
   done
   # Caddyfile 始终由模板生成，模板由 CADDY_TEMPLATE 选择；不要手工改 Caddyfile，
-  # 它每次 update 都会被覆盖。要改就改模板并发布新版本。
+  # 模板由发布维护；本机额外站点存入 Caddyfile.extra，每次更新追加一次且不覆盖源文件。
   # 这里必须用 cp（原地截断、保留 inode）而不是 install/mv：Caddyfile 是以单文件
   # bind mount 挂进 caddy 容器的，换掉 inode 会让容器继续读旧文件。
   cp "$tmp/Caddyfile.$template" "$INSTALL_DIR/Caddyfile"
+  if [[ -e "$INSTALL_DIR/Caddyfile.extra" ]]; then
+    cat "$INSTALL_DIR/Caddyfile.extra" >> "$INSTALL_DIR/Caddyfile"
+  fi
   chmod 0644 "$INSTALL_DIR/Caddyfile"
 }
 
@@ -145,7 +151,13 @@ restore_control_files() {
     mode_bits=0644
     [[ $file == b2b-platform || $file == update.sh || $file == install.sh ]] && mode_bits=0755
     [[ $file == .env ]] && mode_bits=0600
-    install -m "$mode_bits" "$control_backup/$file" "$INSTALL_DIR/$file"
+    if [[ $file == Caddyfile ]]; then
+      # Keep the existing proxy's single-file bind mount attached to the restored bytes.
+      cp -p "$control_backup/$file" "$INSTALL_DIR/$file"
+      chmod "$mode_bits" "$INSTALL_DIR/$file"
+    else
+      install -m "$mode_bits" "$control_backup/$file" "$INSTALL_DIR/$file"
+    fi
   done
   # A new migration may already have committed. Keep its independently pinned TTL
   # daemon alive even if the previous control files do not define that service.
@@ -186,6 +198,12 @@ new_compose=(docker compose --project-directory "$INSTALL_DIR" --env-file "$INST
 if ! "${new_compose[@]}" config -q; then
   restore_and_restart_caddy
   fail "new control files failed Compose validation; restored control files"
+fi
+# Validate the complete template + local extension while the existing proxy is still serving.
+# A syntax/provisioning error restores original files before any proxy recreation.
+if ! "${new_compose[@]}" exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+  restore_and_restart_caddy
+  fail "Caddy configuration failed validation; restored control files before proxy recreation"
 fi
 # Same-version control-file updates must create the newly introduced internal service.
 # Version upgrades start it only after the new image has been pulled, because the old
