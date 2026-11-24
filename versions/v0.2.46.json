@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.46",
+  "rollbackCompatibleFrom": ["v0.2.44", "v0.2.45"],
+  "notes": "Corrective release: doctor validates exact template plus optional reviewed Caddyfile.extra, rejects missing/nonregular/unreadable sources and byte drift. v0.2.45 official update stopped before application upgrade because doctor still compared against the unextended template; failure and unchanged v0.2.44 production are retained. Includes v0.2.45 authenticated SEO resolution BFF. API/Web/shared-type/migration runtime bytes are unchanged from v0.2.45; schema056, no website operations or technical Alt/Schema activation."
+}

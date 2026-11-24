@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.47",
+  "rollbackCompatibleFrom": ["v0.2.44", "v0.2.45"],
+  "notes": "Corrective delivery of strict doctor validation for exact Caddy template plus optional reviewed extension. v0.2.45 update stopped before application upgrade; v0.2.46 isolation gate rejected the supplemental observer test's real independent-site URL. The test now uses an isolated example domain; source-isolation guard is unchanged. Includes authenticated SEO resolution BFF; all API/Web/shared-type/migration/infra runtime bytes unchanged from v0.2.45, schema056. No website operations or technical Alt/Schema activation."
+}

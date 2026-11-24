@@ -259,14 +259,30 @@ doctor() {
     tunnel) [[ $mode == domain ]] || { echo "FAIL CADDY_TEMPLATE=tunnel requires DEPLOYMENT_MODE=domain"; failed=1; } ;;
     *) echo "FAIL invalid CADDY_TEMPLATE: $template"; failed=1 ;;
   esac
-  if [[ -f $INSTALL_DIR/Caddyfile.$template ]]; then
-    if cmp -s "$INSTALL_DIR/Caddyfile" "$INSTALL_DIR/Caddyfile.$template"; then
-      echo "OK Caddyfile matches the $template template"
-    else
-      echo "FAIL Caddyfile drifted from Caddyfile.$template; run b2b-platform update to reinstall it"
-      failed=1
+  # The reviewed local extension is part of the expected configuration, not drift.
+  # Render through checked reads so a missing/unreadable source cannot silently pass.
+  local caddy_expected caddy_rendered=0
+  caddy_expected=$(mktemp) || { echo "FAIL cannot render expected Caddyfile"; return 1; }
+  if [[ ! -f $INSTALL_DIR/Caddyfile.$template ]]; then
+    echo "FAIL missing Caddyfile.$template"
+    caddy_rendered=1
+  elif ! cat "$INSTALL_DIR/Caddyfile.$template" > "$caddy_expected"; then
+    echo "FAIL cannot read Caddyfile.$template"
+    caddy_rendered=1
+  fi
+  if [[ -e $INSTALL_DIR/Caddyfile.extra || -L $INSTALL_DIR/Caddyfile.extra ]]; then
+    if [[ ! -f $INSTALL_DIR/Caddyfile.extra ]] || ! cat "$INSTALL_DIR/Caddyfile.extra" >> "$caddy_expected"; then
+      echo "FAIL Caddyfile.extra must be a readable regular file"
+      caddy_rendered=1
     fi
   fi
+  if (( caddy_rendered == 0 )) && cmp -s "$INSTALL_DIR/Caddyfile" "$caddy_expected"; then
+    echo "OK Caddyfile matches the $template template and optional local extension"
+  else
+    echo "FAIL Caddyfile drifted from its template plus Caddyfile.extra; run b2b-platform update to reinstall it"
+    failed=1
+  fi
+  rm -f "$caddy_expected"
   # cloudflared 可能不在本机（容器里或另一台机器），所以这里只 WARN；
   # 隧道真的断了会由下面的 public health 探活直接 FAIL。
   if [[ $template == tunnel ]]; then
