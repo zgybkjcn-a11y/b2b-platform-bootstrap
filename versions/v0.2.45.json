@@ -1,0 +1,5 @@
+{
+  "version": "v0.2.45",
+  "rollbackCompatibleFrom": ["v0.2.44"],
+  "notes": "Corrective release: add the missing authenticated Web BFF POST route for explicit separately completed SEO Description evidence links, with real Caddy/Next forwarding regression coverage. API/shared-type/migration runtime bytes are unchanged from v0.2.44; schema056 remains. No website operations or approval/parent reassignment. Host updater is already v0.2.44-capable; preserved Caddyfile.extra remains mandatory. The failed v0.2.44 production UI checks and guarded old-updater first-hop proxy recovery are retained in document 335. Technical Alt/Schema capabilities stay disabled."
+}
